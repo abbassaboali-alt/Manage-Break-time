@@ -162,31 +162,6 @@ tbody tr:nth-child(even){background:#f8fbff}
 </main>
 
 <script>
-const LOGIN_URL="https://www.prudle-education.com/log-in-out";
-
-function getRoles(){
-  try{
-    const roles=JSON.parse(localStorage.getItem("roles")||"[]");
-    if(Array.isArray(roles)&&roles.length)return roles.map(r=>String(r||"").trim().toLowerCase()).filter(Boolean);
-  }catch(e){}
-  const oldRole=String(localStorage.getItem("role")||localStorage.getItem("userRole")||"").trim().toLowerCase();
-  return oldRole?[oldRole]:[];
-}
-function checkAdmin(){
-  const user=String(localStorage.getItem("username")||"").trim();
-  const last=localStorage.getItem("loginDate");
-  const today=new Date().toDateString();
-  return !!(user&&last===today&&getRoles().includes("admin"));
-}
-function goLogin(){
-  localStorage.removeItem("username");
-  localStorage.removeItem("role");
-  localStorage.removeItem("roles");
-  localStorage.removeItem("userRole");
-  localStorage.removeItem("loginDate");
-  sessionStorage.clear();
-  window.top.location.replace(LOGIN_URL+"?expired="+Date.now());
-}
 function logout(){
   localStorage.setItem("prudleLoggedOut","1");
   localStorage.removeItem("username");
@@ -195,10 +170,8 @@ function logout(){
   localStorage.removeItem("userRole");
   localStorage.removeItem("loginDate");
   sessionStorage.clear();
-  window.top.location.replace(LOGIN_URL+"?logout="+Date.now());
+  window.top.location.replace("https://www.prudle-education.com/log-in-out?logout="+Date.now());
 }
-if(!checkAdmin()){goLogin();throw new Error("Access denied");}
-
 if(!firebase.apps.length){
   firebase.initializeApp({
     apiKey:"AIzaSyCCFBvZosI8dwShZjxvZzI-SU5igEbcOKk",
