@@ -139,7 +139,7 @@ tr.break-due-alert td{
       <div class="sub">جميع الدورات المفتوحة مع أوقات Check-In وBreak-In وBreak-Out وCheck-Out.</div>
 
       <div class="toolbar">
-        <select id="filterBranch" onchange="renderAdminTable()"><option value="">كل الفروع</option></select>
+        <select id="filterBranch" onchange="refreshAdminSectionFilter();renderAdminTable()"><option value="">كل الفروع</option></select>
         <select id="filterSection" onchange="renderAdminTable()"><option value="">كل الأقسام</option></select>
         <select id="filterPeriod" onchange="renderAdminTable()"><option value="">كل الفترات</option></select>
         <select id="filterCourse" onchange="renderAdminTable()"><option value="">كل الدورات</option></select>
@@ -337,6 +337,7 @@ function clearAttendanceListeners(){
 }
 
 function attachAttendanceListeners(){
+  if(COURSES.length && breakSettingUnsubs.length!==COURSES.length) attachBreakSettingListeners();
   clearAttendanceListeners();
   const today=todayIso();
 
@@ -352,6 +353,18 @@ function attachAttendanceListeners(){
   renderAdminTable();
 }
 
+
+function refreshAdminSectionFilter(){
+  const selected=clean(filterSection.value);
+  const b=clean(filterBranch.value);
+  const sections=[...new Set(
+    COURSES.filter(c=>!b||branch(c)===b).map(section).filter(Boolean)
+  )].sort((a,b)=>a.localeCompare(b,"ar"));
+  filterSection.innerHTML='<option value="">كل الأقسام</option>'+
+    sections.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
+  if(sections.includes(selected))filterSection.value=selected;
+}
+
 function getFilteredRows(){
   const fb=clean(filterBranch.value);
   const fs=clean(filterSection.value);
@@ -359,17 +372,19 @@ function getFilteredRows(){
   const fc=clean(filterCourse.value);
   const ft=clean(filterTrainer.value).toLowerCase();
 
-  return COURSES.filter(c=>
-    (!fb||branch(c)===fb)&&
-    (!fs||section(c)===fs)&&
-    (!fp||period(c)===fp)&&
-    (!fc||name(c)===fc)&&
-    (!ft||trainer(c).toLowerCase().includes(ft))
-  ).sort((a,b)=>
-    branch(a).localeCompare(branch(b),"ar")||
-    section(a).localeCompare(section(b),"ar")||
-    period(a).localeCompare(period(b),"en")||
-    name(a).localeCompare(name(b),"ar")
+  return COURSES.filter(c=>{
+    if(fb && branch(c)!==fb)return false;
+    if(fs && section(c)!==fs)return false;
+    if(fp && period(c)!==fp)return false;
+    if(fc && name(c)!==fc)return false;
+    if(ft && !trainer(c).toLowerCase().includes(ft))return false;
+    return true;
+  }).sort((a,b)=>
+    branch(a).localeCompare(branch(b),"ar") ||
+    section(a).localeCompare(section(b),"ar") ||
+    period(a).localeCompare(period(b),"en") ||
+    name(a).localeCompare(name(b),"ar") ||
+    trainer(a).localeCompare(trainer(b),"ar")
   );
 }
 
@@ -607,26 +622,13 @@ tr.danger{background:#fff4f5!important}
 </div>
 <script>setTimeout(function(){window.print()},450);<\/script>
 
+
 <script id="prudle-admin-break-clock">
 (function(){
-  window.addEventListener("load",function(){
-    setTimeout(function(){
-      try{attachBreakSettingListeners();renderAdminTable();}catch(e){console.warn(e);}
-    },1800);
-  });
-  const prudleAdminBreakClock=setInterval(function(){
-    try{
-      // Refresh listeners if course count changed, otherwise just re-evaluate current time.
-      if(typeof COURSES!=="undefined" && breakSettingUnsubs.length!==COURSES.length){
-        attachBreakSettingListeners();
-      }
-      renderAdminTable();
-    }catch(e){}
+  const timer=setInterval(function(){
+    try{renderAdminTable();}catch(e){}
   },10000);
-  window.addEventListener("beforeunload",function(){
-    clearInterval(prudleAdminBreakClock);
-    breakSettingUnsubs.forEach(fn=>{try{fn()}catch(e){}});
-  });
+  window.addEventListener("beforeunload",function(){clearInterval(timer);});
 })();
 </script>
 
