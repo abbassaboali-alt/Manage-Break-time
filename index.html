@@ -109,13 +109,7 @@ tbody tr:nth-child(even){background:#f8fbff}
         <label>مدة البريك بالدقائق</label>
         <input id="durationInput" type="number" min="1" max="180" value="10">
       </div>
-
-      <div class="field">
-        <label>ملاحظة تظهر أعلى شاشة المدرب (اختياري)</label>
-        <input id="noteInput" type="text" placeholder="مثال: Break 6:55 PM – 7:05 PM">
-      </div>
-
-      <button class="save" onclick="saveSectionBreak()">حفظ وقت البريك للدورة / الكل</button>
+<button class="save" onclick="saveSectionBreak()">حفظ وقت البريك للدورة / الكل</button>
 
       <div class="info">
         إذا لم يوجد إعداد خاص للقسم، يستخدم النظام مدة GlobalSettings الحالية.
@@ -129,6 +123,8 @@ tbody tr:nth-child(even){background:#f8fbff}
       <div class="toolbar">
         <select id="filterBranch" onchange="renderAdminTable()"><option value="">كل الفروع</option></select>
         <select id="filterSection" onchange="renderAdminTable()"><option value="">كل الأقسام</option></select>
+        <select id="filterPeriod" onchange="renderAdminTable()"><option value="">كل الفترات</option></select>
+        <select id="filterCourse" onchange="renderAdminTable()"><option value="">كل الدورات</option></select>
         <input id="filterTrainer" placeholder="بحث باسم المدرب" oninput="renderAdminTable()">
         <button class="refresh" onclick="attachAttendanceListeners()"><i class="fa-solid fa-arrows-rotate"></i> تحديث</button>
         <button class="pdf" onclick="exportTrainerAttendancePDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
@@ -188,10 +184,11 @@ const sectionSelect=document.getElementById("sectionSelect");
 const durationInput=document.getElementById("durationInput");
 const breakCourseSelect=document.getElementById("breakCourseSelect");
 const breakStartInput=document.getElementById("breakStartInput");
-const noteInput=document.getElementById("noteInput");
 const filterBranch=document.getElementById("filterBranch");
 const filterSection=document.getElementById("filterSection");
 const filterTrainer=document.getElementById("filterTrainer");
+const filterPeriod=document.getElementById("filterPeriod");
+const filterCourse=document.getElementById("filterCourse");
 const adminBody=document.getElementById("adminBody");
 
 let COURSES=[];
@@ -240,6 +237,10 @@ function fillSelectors(){
   branchSelect.innerHTML='<option value="">اختر الفرع</option>'+branches.map(x=>`<option>${esc(x)}</option>`).join("");
   filterBranch.innerHTML='<option value="">كل الفروع</option>'+branches.map(x=>`<option>${esc(x)}</option>`).join("");
   filterSection.innerHTML='<option value="">كل الأقسام</option>'+sections.map(x=>`<option>${esc(x)}</option>`).join("");
+  const periods=[...new Set(COURSES.map(period).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"en"));
+  const courseNames=[...new Set(COURSES.map(name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
+  filterPeriod.innerHTML='<option value="">كل الفترات</option>'+periods.map(x=>`<option>${esc(x)}</option>`).join("");
+  filterCourse.innerHTML='<option value="">كل الدورات</option>'+courseNames.map(x=>`<option>${esc(x)}</option>`).join("");
 
   refreshSectionOptions();
 }
@@ -267,7 +268,6 @@ async function saveSectionBreak(){
   const courseId=clean(breakCourseSelect.value);
   const duration=Number(durationInput.value);
   const breakStart=clean(breakStartInput.value);
-  const note=clean(noteInput.value);
 
   if(!courseId){alert("اختر دورة أو اختر كل الدورات الظاهرة.");return;}
   if(!breakStart){alert("حدد وقت بداية البريك.");return;}
@@ -298,7 +298,6 @@ async function saveSectionBreak(){
       section:section(c),
       breakStart,
       duration,
-      note,
       enabled:true,
       updatedBy:USER,
       updatedAt:firebase.firestore.FieldValue.serverTimestamp()
@@ -386,6 +385,8 @@ function exportTrainerAttendancePDF(){
 
   const fb=clean(filterBranch.value)||"كل الفروع";
   const fs=clean(filterSection.value)||"كل الأقسام";
+  const fp=clean(filterPeriod.value)||"كل الفترات";
+  const fc=clean(filterCourse.value)||"كل الدورات";
   const ft=clean(filterTrainer.value)||"كل المدربين";
   const now=new Date();
 
@@ -439,7 +440,7 @@ body{margin:0;font-family:Arial,Tahoma,sans-serif;color:#17324d;background:#fff}
 .logo{width:78px;height:78px;object-fit:contain;background:#fff;border-radius:14px;padding:5px}
 .title{flex:1}.title h1{margin:0;font-size:20px}.title p{margin:4px 0 0;font-size:9px;color:#dcebf6}
 .meta{min-width:210px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);font-size:8px;line-height:1.8;text-align:left}
-.filters{margin:0 0 9px;padding:8px 10px;border:1px solid #d7e2eb;border-right:5px solid #164478;border-radius:9px;background:#eef5fa;font-size:8px;line-height:1.9}
+.filters{margin:0 0 12px;padding:11px 14px;border:1px solid #d7e2eb;border-right:6px solid #164478;border-radius:10px;background:#f3f8fc;font-size:9px;line-height:2.0}
 .filters b{color:#164478}
 .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:9px}
 .stat{border:1px solid #d8e3ec;border-radius:9px;padding:8px;background:#fff}
@@ -447,7 +448,7 @@ body{margin:0;font-family:Arial,Tahoma,sans-serif;color:#17324d;background:#fff}
 h2{margin:0 0 6px;padding:7px 10px;border-radius:7px;background:#164478;color:#fff;font-size:10px}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
 th{background:#dfeaf2;color:#123a5e;font-size:6.5px;font-weight:bold;padding:6px 4px;border:1px solid #c7d5e0}
-td{font-size:6.5px;padding:5px 4px;border:1px solid #dce4eb;text-align:center;word-break:break-word}
+td{font-size:7.2px;padding:6px 4px;border:1px solid #dce4eb;text-align:center;word-break:break-word}
 tbody tr:nth-child(even){background:#f8fbfd}
 tr.danger{background:#fff0f1!important}
 .badge{display:inline-block;padding:3px 6px;border-radius:11px;font-size:6px;font-weight:bold}
