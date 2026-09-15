@@ -55,24 +55,6 @@ tbody tr:nth-child(even){background:#f8fbff}
 .pdf:hover{background:#0f355f}
 @media(max-width:950px){.grid{grid-template-columns:1fr}}
 </style>
-
-<style id="prudle-admin-break-flash-style">
-@keyframes prudleAdminBreakFlash{
-  0%,100%{background:#fff1f2;box-shadow:inset 0 0 0 2px #dc2626}
-  50%{background:#ffd7dc;box-shadow:inset 0 0 0 3px #dc2626,0 0 18px rgba(220,38,38,.35)}
-}
-tr.break-due-alert td{
-  animation:prudleAdminBreakFlash .75s infinite !important;
-  font-weight:900 !important;
-}
-.break-due-label{
-  display:inline-flex;align-items:center;gap:4px;
-  margin-inline-start:5px;padding:3px 7px;border-radius:999px;
-  background:#dc2626;color:#fff;font-size:8px;font-weight:900;
-  animation:prudleAdminBreakFlash .75s infinite;
-}
-</style>
-
 </head>
 <body>
 
@@ -139,7 +121,7 @@ tr.break-due-alert td{
       <div class="sub">جميع الدورات المفتوحة مع أوقات Check-In وBreak-In وBreak-Out وCheck-Out.</div>
 
       <div class="toolbar">
-        <select id="filterBranch" onchange="refreshAdminSectionFilter();renderAdminTable()"><option value="">كل الفروع</option></select>
+        <select id="filterBranch" onchange="renderAdminTable()"><option value="">كل الفروع</option></select>
         <select id="filterSection" onchange="renderAdminTable()"><option value="">كل الأقسام</option></select>
         <select id="filterPeriod" onchange="renderAdminTable()"><option value="">كل الفترات</option></select>
         <select id="filterCourse" onchange="renderAdminTable()"><option value="">كل الدورات</option></select>
@@ -211,8 +193,6 @@ const adminBody=document.getElementById("adminBody");
 
 let COURSES=[];
 let TODAY_ATTENDANCE=new Map();
-let COURSE_BREAK_SETTINGS=new Map();
-let breakSettingUnsubs=[];
 let courseUnsub=null;
 let attendanceUnsubs=[];
 
@@ -337,7 +317,6 @@ function clearAttendanceListeners(){
 }
 
 function attachAttendanceListeners(){
-  if(COURSES.length && breakSettingUnsubs.length!==COURSES.length) attachBreakSettingListeners();
   clearAttendanceListeners();
   const today=todayIso();
 
@@ -353,18 +332,6 @@ function attachAttendanceListeners(){
   renderAdminTable();
 }
 
-
-function refreshAdminSectionFilter(){
-  const selected=clean(filterSection.value);
-  const b=clean(filterBranch.value);
-  const sections=[...new Set(
-    COURSES.filter(c=>!b||branch(c)===b).map(section).filter(Boolean)
-  )].sort((a,b)=>a.localeCompare(b,"ar"));
-  filterSection.innerHTML='<option value="">كل الأقسام</option>'+
-    sections.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join("");
-  if(sections.includes(selected))filterSection.value=selected;
-}
-
 function getFilteredRows(){
   const fb=clean(filterBranch.value);
   const fs=clean(filterSection.value);
@@ -372,60 +339,18 @@ function getFilteredRows(){
   const fc=clean(filterCourse.value);
   const ft=clean(filterTrainer.value).toLowerCase();
 
-  return COURSES.filter(c=>{
-    if(fb && branch(c)!==fb)return false;
-    if(fs && section(c)!==fs)return false;
-    if(fp && period(c)!==fp)return false;
-    if(fc && name(c)!==fc)return false;
-    if(ft && !trainer(c).toLowerCase().includes(ft))return false;
-    return true;
-  }).sort((a,b)=>
-    branch(a).localeCompare(branch(b),"ar") ||
-    section(a).localeCompare(section(b),"ar") ||
-    period(a).localeCompare(period(b),"en") ||
-    name(a).localeCompare(name(b),"ar") ||
-    trainer(a).localeCompare(trainer(b),"ar")
+  return COURSES.filter(c=>
+    (!fb||branch(c)===fb)&&
+    (!fs||section(c)===fs)&&
+    (!fp||period(c)===fp)&&
+    (!fc||name(c)===fc)&&
+    (!ft||trainer(c).toLowerCase().includes(ft))
+  ).sort((a,b)=>
+    branch(a).localeCompare(branch(b),"ar")||
+    section(a).localeCompare(section(b),"ar")||
+    period(a).localeCompare(period(b),"en")||
+    name(a).localeCompare(name(b),"ar")
   );
-}
-
-
-function localTodayIso(){
-  const d=new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
-function localHHMM(){
-  const d=new Date();
-  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-}
-function isBreakDueAdmin(courseId){
-  const a=TODAY_ATTENDANCE.get(courseId)||{};
-  const b=COURSE_BREAK_SETTINGS.get(courseId)||{};
-  const t=clean(b.breakStart);
-  return !!(
-    a.startTS &&
-    !a.breakStartTS &&
-    !a.endTS &&
-    /^\d{1,2}:\d{2}$/.test(t) &&
-    localHHMM()>=t
-  );
-}
-function formatBreakTimeAdmin(v){
-  v=clean(v);
-  if(!/^\d{1,2}:\d{2}$/.test(v))return "-";
-  const [h,m]=v.split(":").map(Number);
-  return `${(h%12)||12}:${String(m).padStart(2,"0")} ${h>=12?"PM":"AM"}`;
-}
-function attachBreakSettingListeners(){
-  breakSettingUnsubs.forEach(fn=>{try{fn()}catch(e){}});
-  breakSettingUnsubs=[];
-
-  COURSES.forEach(c=>{
-    const unsub=db.collection("BreakSettings").doc("course_"+c.id).onSnapshot(doc=>{
-      COURSE_BREAK_SETTINGS.set(c.id,doc.exists?doc.data():{});
-      renderAdminTable();
-    });
-    breakSettingUnsubs.push(unsub);
-  });
 }
 
 function renderAdminTable(){
@@ -435,20 +360,17 @@ function renderAdminTable(){
     const d=TODAY_ATTENDANCE.get(c.id);
     const st=clean(d?.status);
     const cls=st==="On Break"?"break":st==="Checked-Out"?"off":"good";
-    const due=isBreakDueAdmin(c.id);
-    const bs=COURSE_BREAK_SETTINGS.get(c.id)||{};
-    const scheduled=formatBreakTimeAdmin(bs.breakStart);
 
     return `
-      <tr class="${due?"break-due-alert":""}">
+      <tr>
         <td>${i+1}</td>
         <td>${esc(branch(c)||"-")}</td>
         <td>${esc(section(c)||"-")}</td>
-        <td><b>${esc(name(c))}</b>${due?'<span class="break-due-label">⏰ حان وقت البريك</span>':""}</td>
+        <td><b>${esc(name(c))}</b></td>
         <td>${esc(period(c)||"-")}</td>
         <td><b>${esc(trainer(c)||"-")}</b></td>
         <td>${fmt(d?.startTS)}</td>
-        <td>${fmt(d?.breakStartTS)}${due?`<div style="font-size:8px;color:#b91c1c;font-weight:900">المحدد: ${esc(scheduled)}</div>`:""}</td>
+        <td>${fmt(d?.breakStartTS)}</td>
         <td>${fmt(d?.breakEndTS)}</td>
         <td>${fmt(d?.endTS)}</td>
         <td><span class="badge ${cls}">${esc(st||"لم يبدأ")}</span></td>
@@ -456,6 +378,7 @@ function renderAdminTable(){
     `;
   }).join("")||'<tr><td colspan="11">لا توجد بيانات مطابقة</td></tr>';
 }
+
 
 async function exportTrainerAttendancePDF(){
   const rows=getFilteredRows();
@@ -621,17 +544,6 @@ tr.danger{background:#fff4f5!important}
   </div>
 </div>
 <script>setTimeout(function(){window.print()},450);<\/script>
-
-
-<script id="prudle-admin-break-clock">
-(function(){
-  const timer=setInterval(function(){
-    try{renderAdminTable();}catch(e){}
-  },10000);
-  window.addEventListener("beforeunload",function(){clearInterval(timer);});
-})();
-</script>
-
 </body>
 </html>
   `);
