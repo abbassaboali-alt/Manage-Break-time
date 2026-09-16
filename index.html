@@ -54,6 +54,16 @@ tbody tr:nth-child(even){background:#f8fbff}
 }
 .pdf:hover{background:#0f355f}
 @media(max-width:950px){.grid{grid-template-columns:1fr}}
+
+.date-multi{position:relative;min-width:170px}
+.date-multi-btn{min-width:170px;height:45px;border:1.5px solid var(--line);border-radius:11px;padding:0 11px;background:#fff;color:var(--text);font-family:Tajawal;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.date-multi-menu{display:none;position:absolute;top:49px;right:0;z-index:50;width:235px;max-height:330px;overflow:auto;background:#fff;border:1px solid #cfdbe7;border-radius:11px;box-shadow:0 14px 32px rgba(22,68,120,.18);padding:7px}
+.date-multi.open .date-multi-menu{display:block}
+.date-option{display:flex;align-items:center;gap:9px;padding:8px 7px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:800}
+.date-option:hover{background:#eef6ff}.date-option input{width:17px;height:17px;margin:0;accent-color:#164478}
+.date-actions{display:flex;gap:6px;padding:5px 4px 8px;border-bottom:1px solid #e6edf4;margin-bottom:4px}
+.date-actions button{border:0;border-radius:7px;padding:6px 8px;font-family:Tajawal;font-size:11px;font-weight:900;cursor:pointer}
+.date-actions .all{background:#164478;color:#fff}.date-actions .clear{background:#eef2f6;color:#52667a}
 </style>
 </head>
 <body>
@@ -131,7 +141,12 @@ tbody tr:nth-child(even){background:#f8fbff}
         <select id="filterSection" onchange="renderAdminTable()"><option value="">كل الأقسام</option></select>
         <select id="filterPeriod" onchange="renderAdminTable()"><option value="">كل الفترات</option></select>
         <select id="filterCourse" onchange="renderAdminTable()"><option value="">كل الدورات</option></select>
-        <select id="filterStartDate" onchange="renderAdminTable()"><option value="">كل تواريخ البدء</option></select>
+        <div class="date-multi" id="dateMulti">
+<button type="button" class="date-multi-btn" onclick="toggleDateMulti(event)"><span id="dateMultiLabel">كل تواريخ البدء</span><i class="fa-solid fa-chevron-down"></i></button>
+<div class="date-multi-menu" onclick="event.stopPropagation()">
+<div class="date-actions"><button type="button" class="all" onclick="selectAllStartDates()">تحديد الكل</button><button type="button" class="clear" onclick="clearStartDates()">إلغاء التحديد</button></div>
+<div id="dateCheckboxes"></div>
+</div></div>
         <input id="filterTrainer" placeholder="بحث باسم المدرب" oninput="renderAdminTable()">
         <button class="refresh" onclick="attachAttendanceListeners()"><i class="fa-solid fa-arrows-rotate"></i> تحديث</button>
         <button class="pdf" onclick="exportTrainerAttendancePDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
@@ -200,7 +215,7 @@ const filterSection=document.getElementById("filterSection");
 const filterTrainer=document.getElementById("filterTrainer");
 const filterPeriod=document.getElementById("filterPeriod");
 const filterCourse=document.getElementById("filterCourse");
-const filterStartDate=document.getElementById("filterStartDate");
+const filterStartDate=null;
 const adminBody=document.getElementById("adminBody");
 
 let COURSES=[];
@@ -298,9 +313,7 @@ function fillSelectors(){
   const courseNames=[...new Set(COURSES.map(name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
   filterPeriod.innerHTML='<option value="">كل الفترات</option>'+periods.map(x=>`<option>${esc(x)}</option>`).join("");
   filterCourse.innerHTML='<option value="">كل الدورات</option>'+courseNames.map(x=>`<option>${esc(x)}</option>`).join("");
-  const startDates=[...new Set(COURSES.map(courseStartDate).filter(Boolean))].sort();
-  filterStartDate.innerHTML='<option value="">كل تواريخ البدء</option>'+
-    startDates.map(x=>`<option value="${esc(x)}">${esc((x.match(/^\d{4}-\d{2}-\d{2}$/)?x.split("-").reverse().join("/"):x))}</option>`).join("");
+  refreshStartDateCheckboxes();
 
   refreshSectionOptions();
 }
@@ -461,12 +474,30 @@ function attachAttendanceListeners(){
   renderAdminTable();
 }
 
+
+let SELECTED_START_DATES=new Set();
+function displayDate(v){return /^\d{4}-\d{2}-\d{2}$/.test(v)?v.split("-").reverse().join("/"):v}
+function refreshStartDateCheckboxes(){
+  const box=document.getElementById("dateCheckboxes"); if(!box)return;
+  const dates=[...new Set(COURSES.map(courseStartDate).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+  SELECTED_START_DATES=new Set([...SELECTED_START_DATES].filter(d=>dates.includes(d)));
+  box.innerHTML=dates.map(d=>`<label class="date-option"><input type="checkbox" value="${esc(d)}" ${SELECTED_START_DATES.has(d)?"checked":""} onchange="changeStartDateSelection(this)"><span>${esc(displayDate(d))}</span></label>`).join("");
+  updateDateMultiLabel();
+}
+function changeStartDateSelection(el){el.checked?SELECTED_START_DATES.add(el.value):SELECTED_START_DATES.delete(el.value);updateDateMultiLabel();renderAdminTable()}
+function getSelectedStartDates(){return [...SELECTED_START_DATES]}
+function updateDateMultiLabel(){const el=document.getElementById("dateMultiLabel");if(!el)return;const n=SELECTED_START_DATES.size;el.textContent=n===0?"كل تواريخ البدء":n===1?displayDate([...SELECTED_START_DATES][0]):`${n} تواريخ محددة`}
+function toggleDateMulti(e){e?.stopPropagation();document.getElementById("dateMulti")?.classList.toggle("open")}
+function selectAllStartDates(){document.querySelectorAll("#dateCheckboxes input").forEach(el=>{el.checked=true;SELECTED_START_DATES.add(el.value)});updateDateMultiLabel();renderAdminTable()}
+function clearStartDates(){SELECTED_START_DATES.clear();document.querySelectorAll("#dateCheckboxes input").forEach(el=>el.checked=false);updateDateMultiLabel();renderAdminTable()}
+document.addEventListener("click",e=>{const x=document.getElementById("dateMulti");if(x&&!x.contains(e.target))x.classList.remove("open")});
+
 function getFilteredRows(){
   const fb=clean(filterBranch.value);
   const fs=clean(filterSection.value);
   const fp=clean(filterPeriod.value);
   const fc=clean(filterCourse.value);
-  const fd=clean(filterStartDate.value);
+  const selectedDates=getSelectedStartDates();
   const ft=clean(filterTrainer.value).toLowerCase();
 
   return COURSES.filter(c=>
@@ -474,7 +505,7 @@ function getFilteredRows(){
     (!fs||section(c)===fs)&&
     (!fp||period(c)===fp)&&
     (!fc||name(c)===fc)&&
-    (!fd||courseStartDate(c)===fd)&&
+    (!selectedDates.length||selectedDates.includes(courseStartDate(c)))&&
     (!ft||trainer(c).toLowerCase().includes(ft))
   ).sort((a,b)=>
     branch(a).localeCompare(branch(b),"ar")||
@@ -538,7 +569,8 @@ async function exportTrainerAttendancePDF(){
   const fs=clean(filterSection.value)||"كل الأقسام";
   const fp=clean(filterPeriod.value)||"كل الفترات";
   const fc=clean(filterCourse.value)||"كل الدورات";
-  const fd=clean(filterStartDate.value)||"كل تواريخ البدء";
+  const selectedDatesPDF=getSelectedStartDates();
+  const fd=selectedDatesPDF.length ? selectedDatesPDF.map(displayDate).join("، ") : "كل تواريخ البدء";
   const ft=clean(filterTrainer.value)||"كل المدربين";
   const now=new Date();
 
