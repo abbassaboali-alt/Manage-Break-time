@@ -101,7 +101,9 @@ tbody tr:nth-child(even){background:#f8fbff}
 
       <div class="field">
         <label>تاريخ بدء الدورة</label>
-        <input id="breakCourseStartDate" type="text" value="" placeholder="يظهر تلقائيًا حسب الدورة" readonly>
+        <select id="breakCourseStartDate" onchange="refreshBreakCourseOptions()">
+          <option value="">اختر تاريخ بدء الدورة</option>
+        </select>
       </div>
 
       <div class="field">
@@ -306,17 +308,20 @@ function refreshSectionOptions(){
   const b=branchSelect.value;
   const sections=[...new Set(COURSES.filter(c=>!b||branch(c)===b).map(section).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
   sectionSelect.innerHTML='<option value="">اختر القسم</option>'+sections.map(x=>`<option>${esc(x)}</option>`).join("");
+  refreshBreakStartDateOptions();
   refreshBreakCourseOptions();
 }
 
-sectionSelect.addEventListener("change",refreshBreakCourseOptions);
+sectionSelect.addEventListener("change",()=>{
+  refreshBreakStartDateOptions();
+  refreshBreakCourseOptions();
+});
 breakCourseSelect.addEventListener("change",()=>{
   const courseId=clean(breakCourseSelect.value);
   if(!courseId)return;
   const b=BREAK_SETTINGS.get(courseId);
   if(b){
-    updateBreakCourseStartDate();
-          if(clean(b.breakStart))breakStartInput.value=clean(b.breakStart);
+              if(clean(b.breakStart))breakStartInput.value=clean(b.breakStart);
     if(Number(b.duration)>0)durationInput.value=Number(b.duration);
   }
 });
@@ -325,22 +330,46 @@ breakCourseSelect.addEventListener("change",()=>{
 function refreshBreakCourseOptions(){
   const b=clean(branchSelect.value);
   const s=clean(sectionSelect.value);
-  const rows=COURSES.filter(c=>(!b||branch(c)===b)&&(!s||section(c)===s));
+  const startDateEl=document.getElementById("breakCourseStartDate");
+  const sd=clean(startDateEl?.value);
+  const rows=COURSES.filter(c=>
+    (!b||branch(c)===b)&&
+    (!s||section(c)===s)&&
+    (!sd||courseStartDate(c)===sd)
+  );
   breakCourseSelect.innerHTML=
     '<option value="">اختر الدورة</option>'+
     rows.map(c=>`<option value="${esc(c.id)}">${esc(name(c))} · ${esc(period(c)||"-")} · ${esc(displayCourseStartDate(c))} · ${esc(trainer(c)||"-")}</option>`).join("");
 }
 
 
-function updateBreakCourseStartDate(){
+
+function refreshBreakStartDateOptions(){
   const el=document.getElementById("breakCourseStartDate");
   if(!el)return;
-  const courseId=clean(breakCourseSelect.value);
-  const c=COURSES.find(x=>x.id===courseId);
-  el.value=c ? displayCourseStartDate(c) : "";
-}
 
-breakCourseSelect.addEventListener("change",updateBreakCourseStartDate);
+  const b=clean(branchSelect.value);
+  const sec=clean(sectionSelect.value);
+  const current=clean(el.value);
+
+  const dates=[...new Set(
+    COURSES
+      .filter(c=>
+        (!b || branch(c)===b) &&
+        (!sec || section(c)===sec)
+      )
+      .map(courseStartDate)
+      .filter(Boolean)
+  )]
+  .sort((a,b)=>b.localeCompare(a))
+  .slice(0,6);
+
+  el.innerHTML=
+    '<option value="">اختر تاريخ بدء الدورة</option>'+
+    dates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join("");
+
+  if(dates.includes(current))el.value=current;
+}
 
 async function saveSectionBreak(){
   const courseId=clean(breakCourseSelect.value);
