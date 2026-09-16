@@ -64,6 +64,24 @@ tbody tr:nth-child(even){background:#f8fbff}
 .date-actions{display:flex;gap:6px;padding:5px 4px 8px;border-bottom:1px solid #e6edf4;margin-bottom:4px}
 .date-actions button{border:0;border-radius:7px;padding:6px 8px;font-family:Tajawal;font-size:11px;font-weight:900;cursor:pointer}
 .date-actions .all{background:#164478;color:#fff}.date-actions .clear{background:#eef2f6;color:#52667a}
+
+.detail-btn{border:0;border-radius:9px;padding:7px 10px;background:#eaf4fd;color:#164478;font-family:Tajawal;font-weight:900;cursor:pointer}
+.detail-btn:hover{background:#d9ecfb}
+.att-modal{display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,29,52,.58);padding:18px;align-items:center;justify-content:center}
+.att-modal.open{display:flex}
+.att-modal-card{width:min(1100px,96vw);max-height:92vh;overflow:auto;background:#fff;border-radius:18px;box-shadow:0 25px 70px rgba(0,0,0,.28)}
+.att-modal-head{position:sticky;top:0;z-index:3;background:linear-gradient(135deg,#0f355f,#164478,#2469ad);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.att-modal-head h3{margin:0;font-size:18px}.att-modal-close{border:0;background:#fff;color:#164478;border-radius:9px;padding:7px 10px;font-weight:900;cursor:pointer}
+.att-modal-body{padding:14px}.att-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.att-summary div{background:#f5f9fd;border:1px solid #dbe6ef;border-radius:11px;padding:9px;text-align:center;font-size:11px;font-weight:800}
+.att-summary b{display:block;font-size:19px;color:#164478;margin-bottom:2px}
+.att-detail-table{width:100%;min-width:850px;border-collapse:collapse}
+.att-detail-table th{position:static;background:#164478;color:#fff;padding:8px;font-size:11px}
+.att-detail-table td{padding:8px;border:1px solid #e3eaf1;font-size:11px}
+.att-danger{background:#fff0f0!important;color:#b91c1c!important;font-weight:900}
+.att-ok{color:#15803d;font-weight:900}
+@media(max-width:700px){.att-summary{grid-template-columns:repeat(2,1fr)}}
+
 </style>
 </head>
 <body>
@@ -171,10 +189,11 @@ tbody tr:nth-child(even){background:#f8fbff}
               <th>Break-Out</th>
               <th>Check-Out</th>
               <th>الحالة</th>
+              <th>تفاصيل الدورة</th>
             </tr>
           </thead>
           <tbody id="adminBody">
-            <tr><td colspan="14">جاري التحميل...</td></tr>
+            <tr><td colspan="15">جاري التحميل...</td></tr>
           </tbody>
         </table>
       </div>
@@ -182,6 +201,17 @@ tbody tr:nth-child(even){background:#f8fbff}
 
   </section>
 </main>
+
+
+<div id="attendanceDetailModal" class="att-modal" onclick="if(event.target===this)closeAttendanceDetails()">
+  <div class="att-modal-card">
+    <div class="att-modal-head">
+      <h3 id="attendanceDetailTitle">تفاصيل حضور الدورة</h3>
+      <button class="att-modal-close" onclick="closeAttendanceDetails()">إغلاق ×</button>
+    </div>
+    <div id="attendanceDetailBody" class="att-modal-body">جاري التحميل...</div>
+  </div>
+</div>
 
 <script>
 function logout(){
@@ -287,6 +317,112 @@ function fmt(ts){
     });
   }catch(e){return "--";}
 }
+
+function tsToDate(ts){
+  if(!ts)return null;
+  try{
+    const d=ts.toDate?ts.toDate():new Date(ts.seconds?ts.seconds*1000:ts);
+    return Number.isNaN(d.getTime())?null:d;
+  }catch(e){return null}
+}
+function isoLocal(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function expectedCourseDates(c){
+  const start=courseStartDate(c);
+  if(!start)return [];
+  const startD=new Date(start+"T00:00:00");
+  if(Number.isNaN(startD.getTime()))return [];
+  const today=new Date(); today.setHours(0,0,0,0);
+  const explicitEnd=clean(c?.EndingDate||c?.endingDate||c?.endDate||c?.EndDate);
+  let endD=null;
+  if(explicitEnd){
+    const x=new Date(explicitEnd);
+    if(!Number.isNaN(x.getTime()))endD=x;
+  }
+  if(!endD){
+    endD=new Date(startD);
+    endD.setDate(endD.getDate()+30);
+  }
+  endD.setHours(0,0,0,0);
+  const limit=endD<today?endD:today;
+  const out=[];
+  for(let d=new Date(startD);d<=limit;d.setDate(d.getDate()+1)){
+    const day=d.getDay();
+    if(day>=0&&day<=4)out.push(isoLocal(d)); // الأحد إلى الخميس
+  }
+  return out;
+}
+function parsePeriodStart(periodValue,dateIso){
+  const txt=clean(periodValue).toLowerCase().replace(/–|—/g,"-");
+  if(!txt)return null;
+  let m=txt.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if(!m)return null;
+  let h=Number(m[1]), min=Number(m[2]||0), ap=(m[3]||"").toLowerCase();
+  if(ap==="pm"&&h<12)h+=12;
+  if(ap==="am"&&h===12)h=0;
+  if(!ap && h>=1 && h<=8) h+=12; // 4-6 و6-8 و8-10 مسائية، بينما 10-1 تبقى صباحية
+  const d=new Date(dateIso+"T00:00:00");
+  d.setHours(h,min,0,0);
+  return d;
+}
+function attendanceAlertInfo(c,dateIso,d){
+  if(!d||!d.startTS)return {danger:true,label:"لم يحضر",late:null};
+  const actual=tsToDate(d.startTS);
+  const scheduled=parsePeriodStart(period(c),dateIso);
+  if(!actual||!scheduled)return {danger:false,label:"حاضر",late:null};
+  const late=Math.max(0,Math.round((actual-scheduled)/60000));
+  if(late>15)return {danger:true,label:`متأخر ${late} دقيقة`,late};
+  return {danger:false,label:late?`متأخر ${late} دقيقة`:"في الوقت",late};
+}
+function closeAttendanceDetails(){
+  document.getElementById("attendanceDetailModal")?.classList.remove("open");
+}
+async function showCourseAttendanceDetails(courseId){
+  const c=COURSES.find(x=>x.id===courseId);
+  if(!c)return;
+  const modal=document.getElementById("attendanceDetailModal");
+  const body=document.getElementById("attendanceDetailBody");
+  const title=document.getElementById("attendanceDetailTitle");
+  title.textContent=`تفاصيل حضور ${trainer(c)||"-"} · ${name(c)} · ${period(c)||"-"}`;
+  body.innerHTML="جاري تحميل جميع أيام الدورة...";
+  modal.classList.add("open");
+  try{
+    const snap=await db.collection("Courses").doc(c.id).collection("Attendance").get();
+    const map=new Map(snap.docs.map(d=>[d.id,d.data()]));
+    let dates=expectedCourseDates(c);
+    const storedDates=snap.docs.map(d=>d.id).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));
+    dates=[...new Set([...dates,...storedDates])].sort();
+    let absent=0,late=0,ok=0;
+    const rows=dates.map((date,i)=>{
+      const d=map.get(date)||null;
+      const a=attendanceAlertInfo(c,date,d);
+      if(a.danger){ if(!d?.startTS)absent++; else late++; } else ok++;
+      return `<tr class="${a.danger?"att-danger":""}">
+        <td>${i+1}</td><td>${esc(displayDate(date))}</td>
+        <td>${fmt(d?.startTS)}</td><td>${fmt(d?.breakStartTS)}</td>
+        <td>${fmt(d?.breakEndTS)}</td><td>${fmt(d?.endTS)}</td>
+        <td class="${a.danger?"att-danger":"att-ok"}">${esc(a.label)}</td>
+      </tr>`;
+    }).join("");
+    body.innerHTML=`
+      <div class="att-summary">
+        <div><b>${dates.length}</b>أيام الدورة حتى اليوم</div>
+        <div><b>${ok}</b>حضور سليم</div>
+        <div class="${late?"att-danger":""}"><b>${late}</b>تأخر أكثر من 15 دقيقة</div>
+        <div class="${absent?"att-danger":""}"><b>${absent}</b>عدم تحضير</div>
+      </div>
+      <div class="table-wrap" style="max-height:60vh">
+        <table class="att-detail-table"><thead><tr>
+          <th>#</th><th>التاريخ</th><th>Check-In</th><th>Break-In</th><th>Break-Out</th><th>Check-Out</th><th>التنبيه</th>
+        </tr></thead><tbody>${rows||'<tr><td colspan="7">لا توجد أيام حضور مسجلة</td></tr>'}</tbody></table>
+      </div>`;
+  }catch(error){
+    console.error(error);
+    body.innerHTML='<div class="att-danger" style="padding:12px;border-radius:10px">تعذر تحميل تفاصيل الحضور.</div>';
+  }
+}
+
 function esc(v){
   return String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));
 }
@@ -552,9 +688,10 @@ function renderAdminTable(){
         <td>${fmt(d?.breakEndTS)}</td>
         <td>${fmt(d?.endTS)}</td>
         <td><span class="badge ${cls}">${esc(st||"لم يبدأ")}</span></td>
+        <td><button class="detail-btn" onclick="showCourseAttendanceDetails('${esc(c.id)}')"><i class="fa-solid fa-calendar-days"></i> كل الأيام</button></td>
       </tr>
     `;
-  }).join("")||'<tr><td colspan="14">لا توجد بيانات مطابقة</td></tr>';
+  }).join("")||'<tr><td colspan="15">لا توجد بيانات مطابقة</td></tr>';
 }
 
 async function exportTrainerAttendancePDF(){
@@ -769,29 +906,29 @@ async function exportTrainerBreakTimesPDF(){
   const now=new Date();
 
   const groups=[];
-  reportRows.forEach(x=>{
-    const courseName=name(x.course)||"-";
-    const coursePeriod=period(x.course)||"-";
-    const key=courseName+"|||"+coursePeriod;
+  reportRows
+    .sort((a,b)=>
+      period(a.course).localeCompare(period(b.course),"en",{numeric:true,sensitivity:"base"}) ||
+      name(a.course).localeCompare(name(b.course),"ar",{numeric:true,sensitivity:"base"}) ||
+      courseStartDate(b.course).localeCompare(courseStartDate(a.course)) ||
+      trainer(a.course).localeCompare(trainer(b.course),"ar",{sensitivity:"base"})
+    )
+    .forEach(x=>{
+      const coursePeriod=period(x.course)||"-";
+      let group=groups.find(g=>g.coursePeriod===coursePeriod);
+      if(!group){
+        group={coursePeriod,rows:[]};
+        groups.push(group);
+      }
+      group.rows.push(x);
+    });
 
-    let group=groups.find(g=>g.key===key);
-    if(!group){
-      group={
-        key,
-        courseName,
-        coursePeriod,
-        rows:[]
-      };
-      groups.push(group);
-    }
-    group.rows.push(x);
-  });
-
-  const groupsHTML=groups.map((group,groupIndex)=>{
+  const groupsHTML=groups.map(group=>{
 
     const groupRows=group.rows.map((x,i)=>`
       <tr>
         <td>${i+1}</td>
+        <td><b>${esc(name(x.course)||"-")}</b></td>
         <td class="trainer">${esc(trainer(x.course)||"-")}</td>
         <td>${esc(branch(x.course)||"-")}</td>
         <td>${esc(section(x.course)||"-")}</td>
@@ -810,37 +947,26 @@ async function exportTrainerBreakTimesPDF(){
       <section class="period-block">
         <div class="period-head">
           <div class="course-title">
-            <span class="small-label">الدورة</span>
-            <strong>${esc(group.courseName)}</strong>
+            <span class="small-label">جميع الدورات والتواريخ ضمن</span>
+            <strong>الفترة ${esc(group.coursePeriod)}</strong>
           </div>
-
           <div class="period-pill">
-            <span>الفترة</span>
-            <strong>${esc(group.coursePeriod)}</strong>
+            <span>عدد السجلات</span>
+            <strong>${group.rows.length}</strong>
           </div>
         </div>
-
         <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>المدرب</th>
-              <th>الفرع</th>
-              <th>القسم</th>
-              <th>تاريخ بدء الدورة</th>
-              <th>وقت البريك</th>
-              <th>المدة</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th>#</th><th>الدورة</th><th>المدرب</th><th>الفرع</th><th>القسم</th>
+            <th>تاريخ بدء الدورة</th><th>وقت البريك</th><th>المدة</th>
+          </tr></thead>
           <tbody>${groupRows}</tbody>
         </table>
-
         <div class="period-summary">
-          <span>عدد السجلات في هذه الفترة: <b>${group.rows.length}</b></span>
+          <span>الفترة تظهر مرة واحدة حتى عند اختيار أكثر من تاريخ.</span>
           <span>متوسط مدة البريك: <b>${avgDuration||0} دقيقة</b></span>
         </div>
-      </section>
-    `;
+      </section>`;
   }).join("");
 
   const w=window.open("","_blank");
@@ -1109,7 +1235,7 @@ tbody tr:last-child td{border-bottom:0}
       <div>
         <h1>تقرير أوقات البريك للمدربين</h1>
         <div class="en">PRUDLE INSTITUTE · TRAINERS BREAK SCHEDULE</div>
-        <div class="sort-note">مرتب تلقائيًا حسب الدورة ← الفترة ← المدرب</div>
+        <div class="sort-note">تجميع موحّد حسب الفترة ← الدورة ← المدرب</div>
       </div>
     </div>
 
@@ -1133,7 +1259,7 @@ tbody tr:last-child td{border-bottom:0}
 
     <div class="footer">
       <strong>Prudle Institute · Academic Administration</strong>
-      <span>كل فترة معروضة بشكل مستقل داخل الدورة لتسهيل المتابعة الإدارية</span>
+      <span>كل فترة متشابهة مجمعة معًا مهما تعددت تواريخ بدء الدورات</span>
     </div>
 
   </div>
