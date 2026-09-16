@@ -752,9 +752,10 @@ async function exportTrainerBreakTimesPDF(){
   }))
   .filter(x=>x.setting && clean(x.setting.breakStart))
   .sort((a,b)=>
-    trainer(a.course).localeCompare(trainer(b.course),"ar",{sensitivity:"base"}) ||
+    name(a.course).localeCompare(name(b.course),"ar",{numeric:true,sensitivity:"base"}) ||
     period(a.course).localeCompare(period(b.course),"en",{numeric:true,sensitivity:"base"}) ||
-    name(a.course).localeCompare(name(b.course),"ar",{numeric:true,sensitivity:"base"})
+    trainer(a.course).localeCompare(trainer(b.course),"ar",{sensitivity:"base"}) ||
+    branch(a.course).localeCompare(branch(b.course),"ar",{sensitivity:"base"})
   );
 
   if(!reportRows.length){
@@ -763,22 +764,84 @@ async function exportTrainerBreakTimesPDF(){
   }
 
   const trainersCount=new Set(reportRows.map(x=>trainer(x.course))).size;
-  const coursesCount=new Set(reportRows.map(x=>x.course.id)).size;
+  const coursesCount=new Set(reportRows.map(x=>name(x.course))).size;
+  const periodsCount=new Set(reportRows.map(x=>name(x.course)+"|||"+period(x.course))).size;
   const now=new Date();
 
-  const tableRows=reportRows.map((x,i)=>`
-    <tr>
-      <td>${i+1}</td>
-      <td class="trainer">${esc(trainer(x.course)||"-")}</td>
-      <td>${esc(branch(x.course)||"-")}</td>
-      <td>${esc(section(x.course)||"-")}</td>
-      <td class="course">${esc(name(x.course)||"-")}</td>
-      <td>${esc(displayCourseStartDate(x.course)||"-")}</td>
-      <td>${esc(period(x.course)||"-")}</td>
-      <td class="breaktime">${esc(formatScheduledBreakTime(x.setting.breakStart)||"-")}</td>
-      <td>${Number(x.setting.duration||0) ? esc(String(Number(x.setting.duration))+" دقيقة") : "-"}</td>
-    </tr>
-  `).join("");
+  const groups=[];
+  reportRows.forEach(x=>{
+    const courseName=name(x.course)||"-";
+    const coursePeriod=period(x.course)||"-";
+    const key=courseName+"|||"+coursePeriod;
+
+    let group=groups.find(g=>g.key===key);
+    if(!group){
+      group={
+        key,
+        courseName,
+        coursePeriod,
+        rows:[]
+      };
+      groups.push(group);
+    }
+    group.rows.push(x);
+  });
+
+  const groupsHTML=groups.map((group,groupIndex)=>{
+
+    const groupRows=group.rows.map((x,i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td class="trainer">${esc(trainer(x.course)||"-")}</td>
+        <td>${esc(branch(x.course)||"-")}</td>
+        <td>${esc(section(x.course)||"-")}</td>
+        <td>${esc(displayCourseStartDate(x.course)||"-")}</td>
+        <td class="breaktime">${esc(formatScheduledBreakTime(x.setting.breakStart)||"-")}</td>
+        <td>${Number(x.setting.duration||0) ? esc(String(Number(x.setting.duration))+" دقيقة") : "-"}</td>
+      </tr>
+    `).join("");
+
+    const avgDuration=Math.round(
+      group.rows.reduce((sum,x)=>sum+Number(x.setting.duration||0),0) /
+      Math.max(group.rows.length,1)
+    );
+
+    return `
+      <section class="period-block">
+        <div class="period-head">
+          <div class="course-title">
+            <span class="small-label">الدورة</span>
+            <strong>${esc(group.courseName)}</strong>
+          </div>
+
+          <div class="period-pill">
+            <span>الفترة</span>
+            <strong>${esc(group.coursePeriod)}</strong>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>المدرب</th>
+              <th>الفرع</th>
+              <th>القسم</th>
+              <th>تاريخ بدء الدورة</th>
+              <th>وقت البريك</th>
+              <th>المدة</th>
+            </tr>
+          </thead>
+          <tbody>${groupRows}</tbody>
+        </table>
+
+        <div class="period-summary">
+          <span>عدد السجلات في هذه الفترة: <b>${group.rows.length}</b></span>
+          <span>متوسط مدة البريك: <b>${avgDuration||0} دقيقة</b></span>
+        </div>
+      </section>
+    `;
+  }).join("");
 
   const w=window.open("","_blank");
   if(!w){
@@ -794,20 +857,23 @@ async function exportTrainerBreakTimesPDF(){
 <style>
 @page{size:A4 landscape;margin:8mm}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+
 body{
   margin:0;
   font-family:Arial,Tahoma,sans-serif;
   background:#eef3f8;
   color:#18324a;
 }
+
 .report{
   background:#fff;
   border:1px solid #cfdbe7;
   border-radius:18px;
   overflow:hidden;
 }
+
 .header{
-  background:#164478;
+  background:linear-gradient(135deg,#0f355f,#164478,#2469ad);
   color:#fff;
   padding:18px 22px;
   display:flex;
@@ -815,11 +881,13 @@ body{
   justify-content:space-between;
   gap:18px;
 }
+
 .brand{
   display:flex;
   align-items:center;
   gap:14px;
 }
+
 .logo{
   width:76px;
   height:76px;
@@ -828,11 +896,13 @@ body{
   border-radius:14px;
   padding:6px;
 }
+
 .header h1{
   margin:0;
   font-size:25px;
   font-weight:900;
 }
+
 .header .en{
   margin-top:5px;
   font-size:10px;
@@ -840,8 +910,20 @@ body{
   color:#dceaf7;
   font-weight:700;
 }
+
+.header .sort-note{
+  margin-top:7px;
+  font-size:9px;
+  font-weight:700;
+  color:#fff;
+  background:rgba(255,255,255,.12);
+  display:inline-block;
+  padding:5px 9px;
+  border-radius:999px;
+}
+
 .issue{
-  min-width:205px;
+  min-width:215px;
   background:rgba(255,255,255,.11);
   border:1px solid rgba(255,255,255,.2);
   border-radius:12px;
@@ -849,13 +931,16 @@ body{
   font-size:9px;
   line-height:1.9;
 }
+
 .content{padding:15px 17px 13px}
+
 .summary{
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(4,1fr);
   gap:9px;
-  margin-bottom:12px;
+  margin-bottom:14px;
 }
+
 .stat{
   border:1px solid #dbe5ee;
   background:#f7fafd;
@@ -863,12 +948,14 @@ body{
   padding:10px;
   text-align:center;
 }
+
 .stat strong{
   display:block;
   color:#164478;
   font-size:21px;
   font-weight:900;
 }
+
 .stat span{
   display:block;
   margin-top:3px;
@@ -876,60 +963,124 @@ body{
   font-size:9px;
   font-weight:700;
 }
-.section-title{
+
+.period-block{
+  margin:0 0 15px;
+  border:1px solid #d4e0eb;
+  border-radius:14px;
+  overflow:hidden;
+  break-inside:avoid;
+  page-break-inside:avoid;
+}
+
+.period-head{
+  min-height:48px;
+  background:#eaf4fd;
+  border-bottom:1px solid #cbdbe9;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  margin:2px 0 8px;
-  padding:0 2px;
+  gap:12px;
+  padding:9px 13px;
 }
-.section-title h2{
-  margin:0;
+
+.course-title{
+  display:flex;
+  align-items:center;
+  gap:8px;
   color:#164478;
-  font-size:14px;
 }
-.section-title span{
-  color:#7b8b9b;
-  font-size:8px;
+
+.course-title .small-label{
+  font-size:9px;
+  color:#6f8093;
+  font-weight:800;
 }
+
+.course-title strong{
+  font-size:15px;
+  font-weight:900;
+}
+
+.period-pill{
+  min-width:205px;
+  background:#164478;
+  color:#fff;
+  border-radius:999px;
+  padding:7px 13px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+
+.period-pill span{
+  font-size:9px;
+  opacity:.85;
+  font-weight:700;
+}
+
+.period-pill strong{
+  font-size:13px;
+  font-weight:900;
+}
+
 table{
   width:100%;
-  border-collapse:separate;
-  border-spacing:0;
-  border:1px solid #cbd8e4;
-  border-radius:11px;
-  overflow:hidden;
+  border-collapse:collapse;
 }
+
 th{
   background:#164478;
   color:#fff;
   padding:8px 5px;
-  font-size:8.5px;
+  font-size:9px;
   font-weight:900;
   border-left:1px solid rgba(255,255,255,.15);
 }
+
 td{
   text-align:center;
   padding:8px 5px;
-  font-size:8.6px;
+  font-size:9px;
   font-weight:700;
   border-bottom:1px solid #e2e9f0;
   border-left:1px solid #e2e9f0;
 }
+
 tbody tr:nth-child(even) td{background:#f8fbfe}
 tbody tr:last-child td{border-bottom:0}
-.trainer,.course{
+
+.trainer{
   color:#164478;
   font-weight:900;
 }
+
 .breaktime{
   color:#8a5700;
   background:#fff6df!important;
   font-size:10px;
   font-weight:900;
 }
+
+.period-summary{
+  background:#f1f5f9;
+  padding:7px 12px;
+  display:flex;
+  justify-content:space-between;
+  gap:15px;
+  color:#52667a;
+  font-size:8.5px;
+  font-weight:700;
+}
+
+.period-summary b{
+  color:#164478;
+  font-size:9.5px;
+}
+
 .footer{
-  margin-top:12px;
+  margin-top:10px;
   padding-top:9px;
   border-top:1px solid #dce5ed;
   display:flex;
@@ -938,23 +1089,30 @@ tbody tr:last-child td{border-bottom:0}
   color:#748699;
   font-size:8px;
 }
+
 .footer strong{color:#164478}
+
 @media print{
   body{background:#fff}
-  .report{border-radius:0}
+  .report{border-radius:0;border:0}
+  .period-block{break-inside:avoid;page-break-inside:avoid}
 }
 </style>
 </head>
+
 <body>
 <div class="report">
+
   <div class="header">
     <div class="brand">
       <img class="logo" src="${PRUDLE_LOGO}" alt="Prudle">
       <div>
         <h1>تقرير أوقات البريك للمدربين</h1>
         <div class="en">PRUDLE INSTITUTE · TRAINERS BREAK SCHEDULE</div>
+        <div class="sort-note">مرتب تلقائيًا حسب الدورة ← الفترة ← المدرب</div>
       </div>
     </div>
+
     <div class="issue">
       <b>تاريخ التقرير:</b> ${now.toLocaleDateString("ar-SA")}<br>
       <b>وقت الإصدار:</b> ${now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}<br>
@@ -963,40 +1121,24 @@ tbody tr:last-child td{border-bottom:0}
   </div>
 
   <div class="content">
+
     <div class="summary">
-      <div class="stat"><strong>${trainersCount}</strong><span>عدد المدربين</span></div>
       <div class="stat"><strong>${coursesCount}</strong><span>عدد الدورات</span></div>
+      <div class="stat"><strong>${periodsCount}</strong><span>عدد الفترات</span></div>
+      <div class="stat"><strong>${trainersCount}</strong><span>عدد المدربين</span></div>
       <div class="stat"><strong>${reportRows.length}</strong><span>أوقات البريك المسجلة</span></div>
     </div>
 
-    <div class="section-title">
-      <h2>جدول أوقات البريك المعتمدة</h2>
-      <span>يعرض الدورات المطابقة للفلاتر الحالية فقط</span>
-    </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>المدرب</th>
-          <th>الفرع</th>
-          <th>القسم</th>
-          <th>الدورة</th>
-          <th>تاريخ بدء الدورة</th>
-          <th>الفترة</th>
-          <th>وقت البريك</th>
-          <th>المدة</th>
-        </tr>
-      </thead>
-      <tbody>${tableRows}</tbody>
-    </table>
+    ${groupsHTML}
 
     <div class="footer">
       <strong>Prudle Institute · Academic Administration</strong>
-      <span>تقرير إداري داخلي لأوقات راحة المدربين</span>
+      <span>كل فترة معروضة بشكل مستقل داخل الدورة لتسهيل المتابعة الإدارية</span>
     </div>
+
   </div>
 </div>
+
 <script>
 window.onload=function(){
   setTimeout(function(){window.print();},400);
