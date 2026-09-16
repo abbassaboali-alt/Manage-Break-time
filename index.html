@@ -82,6 +82,20 @@ tbody tr:nth-child(even){background:#f8fbff}
 .att-ok{color:#15803d;font-weight:900}
 @media(max-width:700px){.att-summary{grid-template-columns:repeat(2,1fr)}}
 
+
+.course-multi{position:relative;min-width:170px}
+.course-multi-btn{min-width:170px;height:45px;border:1.5px solid var(--line);border-radius:11px;padding:0 11px;background:#fff;color:var(--text);font-family:Tajawal;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.course-multi-menu{display:none;position:absolute;top:49px;right:0;z-index:55;width:255px;max-height:360px;overflow:auto;background:#fff;border:1px solid #cfdbe7;border-radius:11px;box-shadow:0 14px 32px rgba(22,68,120,.18);padding:7px}
+.course-multi.open .course-multi-menu{display:block}
+.course-option{display:flex;align-items:center;gap:9px;padding:8px 7px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:800}
+.course-option:hover{background:#eef6ff}.course-option input{width:17px;height:17px;margin:0;accent-color:#164478}
+.course-actions{display:flex;gap:6px;padding:5px 4px 8px;border-bottom:1px solid #e6edf4;margin-bottom:4px}
+.course-actions button{border:0;border-radius:7px;padding:6px 8px;font-family:Tajawal;font-size:11px;font-weight:900;cursor:pointer}
+.course-actions .all{background:#164478;color:#fff}.course-actions .clear{background:#eef2f6;color:#52667a}
+.multi-detail-bar{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 10px}
+.multi-detail-bar button{border:0;border-radius:10px;padding:9px 12px;font-family:Tajawal;font-weight:900;cursor:pointer}
+.multi-detail-bar .show{background:#eaf4fd;color:#164478}.multi-detail-bar .print{background:#164478;color:#fff}
+
 </style>
 </head>
 <body>
@@ -155,10 +169,15 @@ tbody tr:nth-child(even){background:#f8fbff}
       <div class="sub">جميع الدورات المفتوحة مع أوقات Check-In وBreak-In وBreak-Out وCheck-Out.</div>
 
       <div class="toolbar">
-        <select id="filterBranch" onchange="renderAdminTable()"><option value="">كل الفروع</option></select>
-        <select id="filterSection" onchange="renderAdminTable()"><option value="">كل الأقسام</option></select>
-        <select id="filterPeriod" onchange="renderAdminTable()"><option value="">كل الفترات</option></select>
-        <select id="filterCourse" onchange="renderAdminTable()"><option value="">كل الدورات</option></select>
+        <select id="filterBranch" onchange="refreshCourseCheckboxes();renderAdminTable()"><option value="">كل الفروع</option></select>
+        <select id="filterSection" onchange="refreshCourseCheckboxes();renderAdminTable()"><option value="">كل الأقسام</option></select>
+        <select id="filterPeriod" onchange="refreshCourseCheckboxes();renderAdminTable()"><option value="">كل الفترات</option></select>
+        <div class="course-multi" id="courseMulti">
+<button type="button" class="course-multi-btn" onclick="toggleCourseMulti(event)"><span id="courseMultiLabel">كل الدورات</span><i class="fa-solid fa-chevron-down"></i></button>
+<div class="course-multi-menu" onclick="event.stopPropagation()">
+<div class="course-actions"><button type="button" class="all" onclick="selectAllCourses()">تحديد الكل</button><button type="button" class="clear" onclick="clearCourses()">إلغاء التحديد</button></div>
+<div id="courseCheckboxes"></div>
+</div></div>
         <div class="date-multi" id="dateMulti">
 <button type="button" class="date-multi-btn" onclick="toggleDateMulti(event)"><span id="dateMultiLabel">كل تواريخ البدء</span><i class="fa-solid fa-chevron-down"></i></button>
 <div class="date-multi-menu" onclick="event.stopPropagation()">
@@ -170,6 +189,10 @@ tbody tr:nth-child(even){background:#f8fbff}
         <button class="pdf" onclick="exportTrainerAttendancePDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
         <button class="pdf" onclick="exportTrainerBreakTimesPDF()"><i class="fa-solid fa-clock"></i> PDF أوقات البريك</button>
       </div>
+      <div class="multi-detail-bar">
+        <button class="show" onclick="showSelectedCoursesAttendanceDetails()"><i class="fa-solid fa-calendar-check"></i> تفاصيل الدورات المحددة</button>
+        <button class="print" onclick="exportSelectedCoursesAttendancePDF()"><i class="fa-solid fa-file-pdf"></i> PDF تفاصيل الدورات المحددة</button>
+      </div>
 
       <div class="table-wrap">
         <table>
@@ -179,6 +202,7 @@ tbody tr:nth-child(even){background:#f8fbff}
               <th>الفرع</th>
               <th>القسم</th>
               <th>الدورة</th>
+              <th>رقم الفصل</th>
               <th>تاريخ بدء الدورة</th>
               <th>الفترة</th>
               <th>المدرب</th>
@@ -193,7 +217,7 @@ tbody tr:nth-child(even){background:#f8fbff}
             </tr>
           </thead>
           <tbody id="adminBody">
-            <tr><td colspan="15">جاري التحميل...</td></tr>
+            <tr><td colspan="16">جاري التحميل...</td></tr>
           </tbody>
         </table>
       </div>
@@ -244,7 +268,7 @@ const filterBranch=document.getElementById("filterBranch");
 const filterSection=document.getElementById("filterSection");
 const filterTrainer=document.getElementById("filterTrainer");
 const filterPeriod=document.getElementById("filterPeriod");
-const filterCourse=document.getElementById("filterCourse");
+const filterCourse=null;
 const filterStartDate=null;
 const adminBody=document.getElementById("adminBody");
 
@@ -328,6 +352,11 @@ function tsToDate(ts){
 function isoLocal(d){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
+
+function roomNumber(c){
+  return clean(c?.Room||c?.room||c?.RoomNumber||c?.roomNumber||c?.Classroom||c?.classroom||c?.ClassRoom||c?.classRoom||c?.Hall||c?.hall||c?.classNo||c?.ClassNo||c?.classNumber||c?.ClassNumber||"-");
+}
+
 function expectedCourseDates(c){
   const start=courseStartDate(c);
   if(!start)return [];
@@ -448,10 +477,10 @@ function fillSelectors(){
   const periods=[...new Set(COURSES.map(period).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"en"));
   const courseNames=[...new Set(COURSES.map(name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
   filterPeriod.innerHTML='<option value="">كل الفترات</option>'+periods.map(x=>`<option>${esc(x)}</option>`).join("");
-  filterCourse.innerHTML='<option value="">كل الدورات</option>'+courseNames.map(x=>`<option>${esc(x)}</option>`).join("");
   refreshStartDateCheckboxes();
 
   refreshSectionOptions();
+  refreshCourseCheckboxes();
 }
 
 function refreshSectionOptions(){
@@ -620,19 +649,44 @@ function refreshStartDateCheckboxes(){
   box.innerHTML=dates.map(d=>`<label class="date-option"><input type="checkbox" value="${esc(d)}" ${SELECTED_START_DATES.has(d)?"checked":""} onchange="changeStartDateSelection(this)"><span>${esc(displayDate(d))}</span></label>`).join("");
   updateDateMultiLabel();
 }
-function changeStartDateSelection(el){el.checked?SELECTED_START_DATES.add(el.value):SELECTED_START_DATES.delete(el.value);updateDateMultiLabel();renderAdminTable()}
+function changeStartDateSelection(el){el.checked?SELECTED_START_DATES.add(el.value):SELECTED_START_DATES.delete(el.value);updateDateMultiLabel();refreshCourseCheckboxes();renderAdminTable()}
 function getSelectedStartDates(){return [...SELECTED_START_DATES]}
 function updateDateMultiLabel(){const el=document.getElementById("dateMultiLabel");if(!el)return;const n=SELECTED_START_DATES.size;el.textContent=n===0?"كل تواريخ البدء":n===1?displayDate([...SELECTED_START_DATES][0]):`${n} تواريخ محددة`}
 function toggleDateMulti(e){e?.stopPropagation();document.getElementById("dateMulti")?.classList.toggle("open")}
-function selectAllStartDates(){document.querySelectorAll("#dateCheckboxes input").forEach(el=>{el.checked=true;SELECTED_START_DATES.add(el.value)});updateDateMultiLabel();renderAdminTable()}
-function clearStartDates(){SELECTED_START_DATES.clear();document.querySelectorAll("#dateCheckboxes input").forEach(el=>el.checked=false);updateDateMultiLabel();renderAdminTable()}
+function selectAllStartDates(){document.querySelectorAll("#dateCheckboxes input").forEach(el=>{el.checked=true;SELECTED_START_DATES.add(el.value)});updateDateMultiLabel();refreshCourseCheckboxes();renderAdminTable()}
+function clearStartDates(){SELECTED_START_DATES.clear();document.querySelectorAll("#dateCheckboxes input").forEach(el=>el.checked=false);updateDateMultiLabel();refreshCourseCheckboxes();renderAdminTable()}
 document.addEventListener("click",e=>{const x=document.getElementById("dateMulti");if(x&&!x.contains(e.target))x.classList.remove("open")});
+
+
+let SELECTED_COURSES=new Set();
+function getSelectedCourses(){return [...SELECTED_COURSES]}
+function refreshCourseCheckboxes(){
+  const box=document.getElementById("courseCheckboxes"); if(!box)return;
+  const fb=clean(document.getElementById("filterBranch")?.value);
+  const fs=clean(document.getElementById("filterSection")?.value);
+  const fp=clean(document.getElementById("filterPeriod")?.value);
+  const selectedDates=typeof getSelectedStartDates==="function"?getSelectedStartDates():[];
+  const rows=COURSES.filter(c=>
+    (!fb||branch(c)===fb)&&(!fs||section(c)===fs)&&(!fp||period(c)===fp)&&
+    (!selectedDates.length||selectedDates.includes(courseStartDate(c)))
+  );
+  const names=[...new Set(rows.map(name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"en",{numeric:true,sensitivity:"base"}));
+  SELECTED_COURSES=new Set([...SELECTED_COURSES].filter(x=>names.includes(x)));
+  box.innerHTML=names.map(x=>`<label class="course-option"><input type="checkbox" value="${esc(x)}" ${SELECTED_COURSES.has(x)?"checked":""} onchange="changeCourseSelection(this)"><span>${esc(x)}</span></label>`).join("");
+  updateCourseMultiLabel();
+}
+function changeCourseSelection(el){el.checked?SELECTED_COURSES.add(el.value):SELECTED_COURSES.delete(el.value);updateCourseMultiLabel();renderAdminTable()}
+function updateCourseMultiLabel(){const el=document.getElementById("courseMultiLabel");if(!el)return;const n=SELECTED_COURSES.size;el.textContent=n===0?"كل الدورات":n===1?[...SELECTED_COURSES][0]:`${n} دورات محددة`}
+function toggleCourseMulti(e){e?.stopPropagation();document.getElementById("courseMulti")?.classList.toggle("open")}
+function selectAllCourses(){document.querySelectorAll("#courseCheckboxes input").forEach(el=>{el.checked=true;SELECTED_COURSES.add(el.value)});updateCourseMultiLabel();renderAdminTable()}
+function clearCourses(){SELECTED_COURSES.clear();document.querySelectorAll("#courseCheckboxes input").forEach(el=>el.checked=false);updateCourseMultiLabel();renderAdminTable()}
+document.addEventListener("click",e=>{const x=document.getElementById("courseMulti");if(x&&!x.contains(e.target))x.classList.remove("open")});
 
 function getFilteredRows(){
   const fb=clean(filterBranch.value);
   const fs=clean(filterSection.value);
   const fp=clean(filterPeriod.value);
-  const fc=clean(filterCourse.value);
+  const selectedCourses=getSelectedCourses();
   const selectedDates=getSelectedStartDates();
   const ft=clean(filterTrainer.value).toLowerCase();
 
@@ -640,7 +694,7 @@ function getFilteredRows(){
     (!fb||branch(c)===fb)&&
     (!fs||section(c)===fs)&&
     (!fp||period(c)===fp)&&
-    (!fc||name(c)===fc)&&
+    (!selectedCourses.length||selectedCourses.includes(name(c)))&&
     (!selectedDates.length||selectedDates.includes(courseStartDate(c)))&&
     (!ft||trainer(c).toLowerCase().includes(ft))
   ).sort((a,b)=>
@@ -691,7 +745,7 @@ function renderAdminTable(){
         <td><button class="detail-btn" onclick="showCourseAttendanceDetails('${esc(c.id)}')"><i class="fa-solid fa-calendar-days"></i> كل الأيام</button></td>
       </tr>
     `;
-  }).join("")||'<tr><td colspan="15">لا توجد بيانات مطابقة</td></tr>';
+  }).join("")||'<tr><td colspan="16">لا توجد بيانات مطابقة</td></tr>';
 }
 
 async function exportTrainerAttendancePDF(){
@@ -871,6 +925,68 @@ tr.danger{background:#fff4f5!important}
 }
 
 
+
+async function collectCourseAttendanceDetail(c){
+  const snap=await db.collection("Courses").doc(c.id).collection("Attendance").get();
+  const map=new Map(snap.docs.map(d=>[d.id,d.data()]));
+  let dates=expectedCourseDates(c);
+  const stored=snap.docs.map(d=>d.id).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));
+  dates=[...new Set([...dates,...stored])].sort();
+  return {course:c,dates,map};
+}
+function selectedDetailCourses(){
+  const selected=getSelectedCourses();
+  const rows=getFilteredRows();
+  return selected.length?rows.filter(c=>selected.includes(name(c))):[];
+}
+async function showSelectedCoursesAttendanceDetails(){
+  const courses=selectedDetailCourses();
+  if(!courses.length){alert("حدد دورة واحدة أو أكثر أولاً.");return}
+  const modal=document.getElementById("attendanceDetailModal");
+  const body=document.getElementById("attendanceDetailBody");
+  document.getElementById("attendanceDetailTitle").textContent=`تفاصيل حضور الدورات المحددة (${courses.length})`;
+  body.innerHTML="جاري تحميل جميع أيام الدورات...";
+  modal.classList.add("open");
+  try{
+    const details=await Promise.all(courses.map(collectCourseAttendanceDetail));
+    body.innerHTML=details.map(det=>{
+      let absent=0,late=0,ok=0;
+      const rr=det.dates.map((date,i)=>{
+        const d=det.map.get(date)||null,a=attendanceAlertInfo(det.course,date,d);
+        if(a.danger){if(!d?.startTS)absent++;else late++;}else ok++;
+        return `<tr class="${a.danger?"att-danger":""}"><td>${i+1}</td><td>${esc(displayDate(date))}</td><td>${fmt(d?.startTS)}</td><td>${fmt(d?.breakStartTS)}</td><td>${fmt(d?.breakEndTS)}</td><td>${fmt(d?.endTS)}</td><td>${esc(a.label)}</td></tr>`;
+      }).join("");
+      return `<div style="margin-bottom:18px;border:1px solid #d8e4ef;border-radius:13px;overflow:hidden">
+        <div style="background:#eaf4fd;color:#164478;padding:10px 12px;font-weight:900">${esc(name(det.course))} · ${esc(period(det.course)||"-")} · المدرب: ${esc(trainer(det.course)||"-")} · الفصل: ${esc(roomNumber(det.course))}</div>
+        <div class="att-summary" style="padding:9px;margin:0"><div><b>${det.dates.length}</b>الأيام</div><div><b>${ok}</b>حضور سليم</div><div class="${late?"att-danger":""}"><b>${late}</b>تأخر +15 دقيقة</div><div class="${absent?"att-danger":""}"><b>${absent}</b>عدم تحضير</div></div>
+        <div class="table-wrap" style="border-radius:0"><table class="att-detail-table"><thead><tr><th>#</th><th>التاريخ</th><th>Check-In</th><th>Break-In</th><th>Break-Out</th><th>Check-Out</th><th>الحالة</th></tr></thead><tbody>${rr}</tbody></table></div>
+      </div>`;
+    }).join("");
+  }catch(e){console.error(e);body.innerHTML='<div class="att-danger" style="padding:12px">تعذر تحميل التفاصيل.</div>'}
+}
+async function exportSelectedCoursesAttendancePDF(){
+  const courses=selectedDetailCourses();
+  if(!courses.length){alert("حدد دورة واحدة أو أكثر أولاً.");return}
+  const details=await Promise.all(courses.map(collectCourseAttendanceDetail));
+  const now=new Date();
+  const sections=details.map(det=>{
+    let absent=0,late=0,ok=0;
+    const rr=det.dates.map((date,i)=>{
+      const d=det.map.get(date)||null,a=attendanceAlertInfo(det.course,date,d);
+      if(a.danger){if(!d?.startTS)absent++;else late++;}else ok++;
+      return `<tr class="${a.danger?"danger":""}"><td>${i+1}</td><td>${esc(displayDate(date))}</td><td>${fmt(d?.startTS)}</td><td>${fmt(d?.breakStartTS)}</td><td>${fmt(d?.breakEndTS)}</td><td>${fmt(d?.endTS)}</td><td>${esc(a.label)}</td></tr>`;
+    }).join("");
+    return `<section><div class="sectionHead"><b>${esc(name(det.course))}</b><span>الفترة: ${esc(period(det.course)||"-")} | المدرب: ${esc(trainer(det.course)||"-")} | الفصل: ${esc(roomNumber(det.course))} | البداية: ${esc(displayCourseStartDate(det.course))}</span></div>
+    <div class="stats"><span>الأيام <b>${det.dates.length}</b></span><span>سليم <b>${ok}</b></span><span class="${late?"red":""}">تأخر +15 <b>${late}</b></span><span class="${absent?"red":""}">عدم تحضير <b>${absent}</b></span></div>
+    <table><thead><tr><th>#</th><th>التاريخ</th><th>Check-In</th><th>Break-In</th><th>Break-Out</th><th>Check-Out</th><th>الحالة</th></tr></thead><tbody>${rr}</tbody></table></section>`;
+  }).join("");
+  const w=window.open("","_blank");if(!w){alert("اسمح بالنوافذ المنبثقة.");return}
+  w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تفاصيل حضور الدورات</title><style>
+  @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:Arial,Tahoma;margin:0;color:#18324a}.head{background:linear-gradient(135deg,#0f355f,#164478,#2469ad);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:14px}.head img{width:70px;height:70px;object-fit:contain;background:#fff;border-radius:12px;padding:5px}.head h1{margin:0;font-size:23px}.meta{font-size:9px;line-height:1.8}section{margin-top:14px;border:1px solid #d7e2ec;border-radius:12px;overflow:hidden;break-inside:avoid}.sectionHead{background:#eaf4fd;padding:10px 13px;display:flex;justify-content:space-between;color:#164478;font-size:11px}.sectionHead b{font-size:15px}.stats{display:flex;gap:8px;padding:8px;background:#f8fbfe}.stats span{flex:1;text-align:center;border:1px solid #dce6ef;border-radius:8px;padding:6px;font-size:9px}.stats b{font-size:13px;color:#164478}.red,.danger{color:#b91c1c!important;background:#fff0f0!important}table{width:100%;border-collapse:collapse}th{background:#164478;color:#fff;padding:7px;font-size:9px}td{text-align:center;padding:7px;border:1px solid #e3eaf1;font-size:9px}.foot{margin-top:10px;border-top:1px solid #dce5ed;padding-top:7px;font-size:8px;color:#718397}</style></head><body>
+  <div class="head"><div><h1>تقرير تفاصيل حضور الدورات</h1><div>PRUDLE INSTITUTE · COURSE ATTENDANCE DETAILS</div></div><div class="meta">تاريخ التقرير: ${now.toLocaleDateString("ar-SA")}<br>عدد الدورات: ${details.length}<br>أعد بواسطة: ${esc(USER||"Admin")}</div><img src="${PRUDLE_LOGO}"></div>${sections}<div class="foot">Prudle Institute · Academic Administration</div><script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
+  w.document.close();
+}
+
 async function exportTrainerBreakTimesPDF(){
 
   const rows=getFilteredRows();
@@ -929,6 +1045,7 @@ async function exportTrainerBreakTimesPDF(){
       <tr>
         <td>${i+1}</td>
         <td><b>${esc(name(x.course)||"-")}</b></td>
+        <td>${esc(roomNumber(x.course))}</td>
         <td class="trainer">${esc(trainer(x.course)||"-")}</td>
         <td>${esc(branch(x.course)||"-")}</td>
         <td>${esc(section(x.course)||"-")}</td>
@@ -957,7 +1074,7 @@ async function exportTrainerBreakTimesPDF(){
         </div>
         <table>
           <thead><tr>
-            <th>#</th><th>الدورة</th><th>المدرب</th><th>الفرع</th><th>القسم</th>
+            <th>#</th><th>الدورة</th><th>رقم الفصل</th><th>المدرب</th><th>الفرع</th><th>القسم</th>
             <th>تاريخ بدء الدورة</th><th>وقت البريك</th><th>المدة</th>
           </tr></thead>
           <tbody>${groupRows}</tbody>
