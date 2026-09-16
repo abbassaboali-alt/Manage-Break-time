@@ -96,6 +96,17 @@ tbody tr:nth-child(even){background:#f8fbff}
 .multi-detail-bar button{border:0;border-radius:10px;padding:9px 12px;font-family:Tajawal;font-weight:900;cursor:pointer}
 .multi-detail-bar .show{background:#eaf4fd;color:#164478}.multi-detail-bar .print{background:#164478;color:#fff}
 
+
+.section-multi{position:relative;min-width:170px}
+.section-multi-btn{min-width:170px;height:45px;border:1.5px solid var(--line);border-radius:11px;padding:0 11px;background:#fff;color:var(--text);font-family:Tajawal;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.section-multi-menu{display:none;position:absolute;top:49px;right:0;z-index:58;width:235px;max-height:330px;overflow:auto;background:#fff;border:1px solid #cfdbe7;border-radius:11px;box-shadow:0 14px 32px rgba(22,68,120,.18);padding:7px}
+.section-multi.open .section-multi-menu{display:block}
+.section-option{display:flex;align-items:center;gap:9px;padding:8px 7px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:800}
+.section-option:hover{background:#eef6ff}.section-option input{width:17px;height:17px;margin:0;accent-color:#164478}
+.section-actions{display:flex;gap:6px;padding:5px 4px 8px;border-bottom:1px solid #e6edf4;margin-bottom:4px}
+.section-actions button{border:0;border-radius:7px;padding:6px 8px;font-family:Tajawal;font-size:11px;font-weight:900;cursor:pointer}
+.section-actions .all{background:#164478;color:#fff}.section-actions .clear{background:#eef2f6;color:#52667a}
+
 </style>
 </head>
 <body>
@@ -169,8 +180,13 @@ tbody tr:nth-child(even){background:#f8fbff}
       <div class="sub">جميع الدورات المفتوحة مع أوقات Check-In وBreak-In وBreak-Out وCheck-Out.</div>
 
       <div class="toolbar">
-        <select id="filterBranch" onchange="refreshCourseCheckboxes();renderAdminTable()"><option value="">كل الفروع</option></select>
-        <select id="filterSection" onchange="refreshCourseCheckboxes();renderAdminTable()"><option value="">كل الأقسام</option></select>
+        <select id="filterBranch" onchange="refreshSectionCheckboxes();refreshCourseCheckboxes();renderAdminTable()"><option value="">كل الفروع</option></select>
+        <div class="section-multi" id="sectionMulti">
+<button type="button" class="section-multi-btn" onclick="toggleSectionMulti(event)"><span id="sectionMultiLabel">كل الأقسام</span><i class="fa-solid fa-chevron-down"></i></button>
+<div class="section-multi-menu" onclick="event.stopPropagation()">
+<div class="section-actions"><button type="button" class="all" onclick="selectAllSections()">تحديد الكل</button><button type="button" class="clear" onclick="clearSections()">إلغاء التحديد</button></div>
+<div id="sectionCheckboxes"></div>
+</div></div>
         <select id="filterPeriod" onchange="refreshCourseCheckboxes();renderAdminTable()"><option value="">كل الفترات</option></select>
         <div class="course-multi" id="courseMulti">
 <button type="button" class="course-multi-btn" onclick="toggleCourseMulti(event)"><span id="courseMultiLabel">كل الدورات</span><i class="fa-solid fa-chevron-down"></i></button>
@@ -265,7 +281,7 @@ const durationInput=document.getElementById("durationInput");
 const breakCourseSelect=document.getElementById("breakCourseSelect");
 const breakStartInput=document.getElementById("breakStartInput");
 const filterBranch=document.getElementById("filterBranch");
-const filterSection=document.getElementById("filterSection");
+const filterSection=null;
 const filterTrainer=document.getElementById("filterTrainer");
 const filterPeriod=document.getElementById("filterPeriod");
 const filterCourse=null;
@@ -462,6 +478,7 @@ function startCourses(){
   courseUnsub=db.collection("Courses").onSnapshot(snap=>{
     COURSES=snap.docs.map(d=>({id:d.id,...d.data()})).filter(isOpen);
     fillSelectors();
+    refreshSectionCheckboxes();
     attachBreakSettingsListeners();
     attachAttendanceListeners();
   });
@@ -473,7 +490,6 @@ function fillSelectors(){
 
   branchSelect.innerHTML='<option value="">اختر الفرع</option>'+branches.map(x=>`<option>${esc(x)}</option>`).join("");
   filterBranch.innerHTML='<option value="">كل الفروع</option>'+branches.map(x=>`<option>${esc(x)}</option>`).join("");
-  filterSection.innerHTML='<option value="">كل الأقسام</option>'+sections.map(x=>`<option>${esc(x)}</option>`).join("");
   const periods=[...new Set(COURSES.map(period).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"en"));
   const courseNames=[...new Set(COURSES.map(name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
   filterPeriod.innerHTML='<option value="">كل الفترات</option>'+periods.map(x=>`<option>${esc(x)}</option>`).join("");
@@ -658,16 +674,49 @@ function clearStartDates(){SELECTED_START_DATES.clear();document.querySelectorAl
 document.addEventListener("click",e=>{const x=document.getElementById("dateMulti");if(x&&!x.contains(e.target))x.classList.remove("open")});
 
 
+
+let SELECTED_SECTIONS=new Set();
+function getSelectedSections(){return [...SELECTED_SECTIONS]}
+function refreshSectionCheckboxes(){
+  const box=document.getElementById("sectionCheckboxes");if(!box)return;
+  const fb=clean(document.getElementById("filterBranch")?.value);
+  const rows=COURSES.filter(c=>(!fb||branch(c)===fb));
+  const values=[...new Set(rows.map(section).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"en",{numeric:true,sensitivity:"base"}));
+  SELECTED_SECTIONS=new Set([...SELECTED_SECTIONS].filter(x=>values.includes(x)));
+  box.innerHTML=values.map(x=>`<label class="section-option"><input type="checkbox" value="${esc(x)}" ${SELECTED_SECTIONS.has(x)?"checked":""} onchange="changeSectionSelection(this)"><span>${esc(x)}</span></label>`).join("");
+  updateSectionMultiLabel();
+}
+function changeSectionSelection(el){
+  el.checked?SELECTED_SECTIONS.add(el.value):SELECTED_SECTIONS.delete(el.value);
+  updateSectionMultiLabel();refreshCourseCheckboxes();renderAdminTable();
+}
+function updateSectionMultiLabel(){
+  const el=document.getElementById("sectionMultiLabel");if(!el)return;
+  const n=SELECTED_SECTIONS.size;
+  el.textContent=n===0?"كل الأقسام":n===1?[...SELECTED_SECTIONS][0]:`${n} أقسام محددة`;
+}
+function toggleSectionMulti(e){e?.stopPropagation();document.getElementById("sectionMulti")?.classList.toggle("open")}
+function selectAllSections(){
+  document.querySelectorAll("#sectionCheckboxes input").forEach(el=>{el.checked=true;SELECTED_SECTIONS.add(el.value)});
+  updateSectionMultiLabel();refreshCourseCheckboxes();renderAdminTable();
+}
+function clearSections(){
+  SELECTED_SECTIONS.clear();
+  document.querySelectorAll("#sectionCheckboxes input").forEach(el=>el.checked=false);
+  updateSectionMultiLabel();refreshCourseCheckboxes();renderAdminTable();
+}
+document.addEventListener("click",e=>{const x=document.getElementById("sectionMulti");if(x&&!x.contains(e.target))x.classList.remove("open")});
+
 let SELECTED_COURSES=new Set();
 function getSelectedCourses(){return [...SELECTED_COURSES]}
 function refreshCourseCheckboxes(){
   const box=document.getElementById("courseCheckboxes"); if(!box)return;
   const fb=clean(document.getElementById("filterBranch")?.value);
-  const fs=clean(document.getElementById("filterSection")?.value);
+  const selectedSections=getSelectedSections();
   const fp=clean(document.getElementById("filterPeriod")?.value);
   const selectedDates=typeof getSelectedStartDates==="function"?getSelectedStartDates():[];
   const rows=COURSES.filter(c=>
-    (!fb||branch(c)===fb)&&(!fs||section(c)===fs)&&(!fp||period(c)===fp)&&
+    (!fb||branch(c)===fb)&&(!selectedSections.length||selectedSections.includes(section(c)))&&(!fp||period(c)===fp)&&
     (!selectedDates.length||selectedDates.includes(courseStartDate(c)))
   );
   const names=[...new Set(rows.map(name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"en",{numeric:true,sensitivity:"base"}));
@@ -684,7 +733,7 @@ document.addEventListener("click",e=>{const x=document.getElementById("courseMul
 
 function getFilteredRows(){
   const fb=clean(filterBranch.value);
-  const fs=clean(filterSection.value);
+  const selectedSections=getSelectedSections();
   const fp=clean(filterPeriod.value);
   const selectedCourses=getSelectedCourses();
   const selectedDates=getSelectedStartDates();
@@ -692,7 +741,7 @@ function getFilteredRows(){
 
   return COURSES.filter(c=>
     (!fb||branch(c)===fb)&&
-    (!fs||section(c)===fs)&&
+    (!selectedSections.length||selectedSections.includes(section(c)))&&
     (!fp||period(c)===fp)&&
     (!selectedCourses.length||selectedCourses.includes(name(c)))&&
     (!selectedDates.length||selectedDates.includes(courseStartDate(c)))&&
@@ -982,8 +1031,8 @@ async function exportSelectedCoursesAttendancePDF(){
   }).join("");
   const w=window.open("","_blank");if(!w){alert("اسمح بالنوافذ المنبثقة.");return}
   w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تفاصيل حضور الدورات</title><style>
-  @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:Arial,Tahoma;margin:0;color:#18324a}.head{background:linear-gradient(135deg,#0f355f,#164478,#2469ad);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:14px}.head img{width:70px;height:70px;object-fit:contain;background:#fff;border-radius:12px;padding:5px}.head h1{margin:0;font-size:23px}.meta{font-size:9px;line-height:1.8}section{margin-top:14px;border:1px solid #d7e2ec;border-radius:12px;overflow:hidden;break-inside:avoid}.sectionHead{background:#eaf4fd;padding:10px 13px;display:flex;justify-content:space-between;color:#164478;font-size:11px}.sectionHead b{font-size:15px}.stats{display:flex;gap:8px;padding:8px;background:#f8fbfe}.stats span{flex:1;text-align:center;border:1px solid #dce6ef;border-radius:8px;padding:6px;font-size:9px}.stats b{font-size:13px;color:#164478}.red,.danger{color:#b91c1c!important;background:#fff0f0!important}table{width:100%;border-collapse:collapse}th{background:#164478;color:#fff;padding:7px;font-size:9px}td{text-align:center;padding:7px;border:1px solid #e3eaf1;font-size:9px}.foot{margin-top:10px;border-top:1px solid #dce5ed;padding-top:7px;font-size:8px;color:#718397}</style></head><body>
-  <div class="head"><div><h1>تقرير تفاصيل حضور الدورات</h1><div>PRUDLE INSTITUTE · COURSE ATTENDANCE DETAILS</div></div><div class="meta">تاريخ التقرير: ${now.toLocaleDateString("ar-SA")}<br>عدد الدورات: ${details.length}<br>أعد بواسطة: ${esc(USER||"Admin")}</div><img src="${PRUDLE_LOGO}"></div>${sections}<div class="foot">Prudle Institute · Academic Administration</div><script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
+  @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-family:Arial,Tahoma;margin:0;color:#18324a}.head{background:linear-gradient(135deg,#0f355f,#164478,#2469ad);color:#fff;padding:17px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:14px}.identity{display:flex;align-items:center;gap:14px}.head img{width:68px;height:68px;object-fit:contain;background:#fff;border-radius:12px;padding:5px}.head h1{margin:0 0 4px;font-size:22px}.en{font-size:9px;letter-spacing:.6px;opacity:.9}.meta{font-size:9px;line-height:1.9;text-align:right}.report-note{margin-top:10px;padding:8px 12px;border:1px solid #d7e2ec;border-radius:9px;background:#f7fafc;color:#52667a;font-size:9px}section{margin-top:14px;border:1px solid #d7e2ec;border-radius:12px;overflow:hidden;break-inside:avoid}.sectionHead{background:#eaf4fd;padding:10px 13px;display:flex;justify-content:space-between;color:#164478;font-size:11px}.sectionHead b{font-size:15px}.stats{display:flex;gap:8px;padding:8px;background:#f8fbfe}.stats span{flex:1;text-align:center;border:1px solid #dce6ef;border-radius:8px;padding:6px;font-size:9px}.stats b{font-size:13px;color:#164478}.red,.danger{color:#b91c1c!important;background:#fff0f0!important}table{width:100%;border-collapse:collapse}th{background:#164478;color:#fff;padding:7px;font-size:9px}td{text-align:center;padding:7px;border:1px solid #e3eaf1;font-size:9px}.foot{margin-top:10px;border-top:1px solid #dce5ed;padding-top:7px;font-size:8px;color:#718397}</style></head><body>
+  <div class="head"><div class="identity"><img src="${PRUDLE_LOGO}"><div><h1>تقرير إداري تفصيلي لحضور الدورات</h1><div class="en">PRUDLE INSTITUTE · COURSE ATTENDANCE ADMINISTRATIVE REPORT</div></div></div><div class="meta"><b>إدارة التدريب</b><br>تاريخ التقرير: ${now.toLocaleDateString("ar-SA")}<br>عدد الدورات المحددة: ${details.length}<br>أعد بواسطة: ${esc(USER||"Admin")}</div></div><div class="report-note">ملخص إداري لأيام الحضور المسجلة والمتوقعة لكل دورة محددة، مع إظهار حالات التأخر وعدم التحضير.</div>${sections}<div class="foot">Prudle Institute · Training & Academic Administration · Generated ${now.toLocaleString("en-GB")}</div><script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
   w.document.close();
 }
 
