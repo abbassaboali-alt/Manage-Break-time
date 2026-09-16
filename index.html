@@ -135,6 +135,7 @@ tbody tr:nth-child(even){background:#f8fbff}
         <input id="filterTrainer" placeholder="بحث باسم المدرب" oninput="renderAdminTable()">
         <button class="refresh" onclick="attachAttendanceListeners()"><i class="fa-solid fa-arrows-rotate"></i> تحديث</button>
         <button class="pdf" onclick="exportTrainerAttendancePDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+        <button class="pdf" onclick="exportTrainerBreakTimesPDF()"><i class="fa-solid fa-clock"></i> PDF أوقات البريك</button>
       </div>
 
       <div class="table-wrap">
@@ -337,6 +338,12 @@ function refreshBreakCourseOptions(){
     (!s||section(c)===s)&&
     (!sd||courseStartDate(c)===sd)
   );
+  rows.sort((a,b)=>
+    period(a).localeCompare(period(b),"en",{numeric:true,sensitivity:"base"}) ||
+    name(a).localeCompare(name(b),"ar",{numeric:true,sensitivity:"base"}) ||
+    trainer(a).localeCompare(trainer(b),"ar",{sensitivity:"base"})
+  );
+
   breakCourseSelect.innerHTML=
     '<option value="">اختر الدورة</option>'+
     rows.map(c=>`<option value="${esc(c.id)}">${esc(name(c))} · ${esc(period(c)||"-")} · ${esc(displayCourseStartDate(c))} · ${esc(trainer(c)||"-")}</option>`).join("");
@@ -690,6 +697,281 @@ tr.danger{background:#fff4f5!important}
 </body>
 </html>
   `);
+
+  w.document.close();
+}
+
+
+async function exportTrainerBreakTimesPDF(){
+
+  const rows=getFilteredRows();
+  if(!rows.length){
+    alert("لا توجد دورات مطابقة للفلاتر الحالية.");
+    return;
+  }
+
+  const settings=await Promise.all(
+    rows.map(c=>db.collection("BreakSettings").doc("course_"+c.id).get())
+  );
+
+  const reportRows=rows.map((c,i)=>({
+    course:c,
+    setting:settings[i].exists ? settings[i].data() : null
+  }))
+  .filter(x=>x.setting && clean(x.setting.breakStart))
+  .sort((a,b)=>
+    trainer(a.course).localeCompare(trainer(b.course),"ar",{sensitivity:"base"}) ||
+    period(a.course).localeCompare(period(b.course),"en",{numeric:true,sensitivity:"base"}) ||
+    name(a.course).localeCompare(name(b.course),"ar",{numeric:true,sensitivity:"base"})
+  );
+
+  if(!reportRows.length){
+    alert("لا توجد أوقات بريك محددة للدورات المطابقة.");
+    return;
+  }
+
+  const trainersCount=new Set(reportRows.map(x=>trainer(x.course))).size;
+  const coursesCount=new Set(reportRows.map(x=>x.course.id)).size;
+  const now=new Date();
+
+  const tableRows=reportRows.map((x,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td class="trainer">${esc(trainer(x.course)||"-")}</td>
+      <td>${esc(branch(x.course)||"-")}</td>
+      <td>${esc(section(x.course)||"-")}</td>
+      <td class="course">${esc(name(x.course)||"-")}</td>
+      <td>${esc(displayCourseStartDate(x.course)||"-")}</td>
+      <td>${esc(period(x.course)||"-")}</td>
+      <td class="breaktime">${esc(formatScheduledBreakTime(x.setting.breakStart)||"-")}</td>
+      <td>${Number(x.setting.duration||0) ? esc(String(Number(x.setting.duration))+" دقيقة") : "-"}</td>
+    </tr>
+  `).join("");
+
+  const w=window.open("","_blank");
+  if(!w){
+    alert("اسمح بالنوافذ المنبثقة لإنشاء التقرير.");
+    return;
+  }
+
+  w.document.write(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Prudle - Trainers Break Times Report</title>
+<style>
+@page{size:A4 landscape;margin:8mm}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+body{
+  margin:0;
+  font-family:Arial,Tahoma,sans-serif;
+  background:#eef3f8;
+  color:#18324a;
+}
+.report{
+  background:#fff;
+  border:1px solid #cfdbe7;
+  border-radius:18px;
+  overflow:hidden;
+}
+.header{
+  background:#164478;
+  color:#fff;
+  padding:18px 22px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+}
+.brand{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.logo{
+  width:76px;
+  height:76px;
+  object-fit:contain;
+  background:#fff;
+  border-radius:14px;
+  padding:6px;
+}
+.header h1{
+  margin:0;
+  font-size:25px;
+  font-weight:900;
+}
+.header .en{
+  margin-top:5px;
+  font-size:10px;
+  letter-spacing:1px;
+  color:#dceaf7;
+  font-weight:700;
+}
+.issue{
+  min-width:205px;
+  background:rgba(255,255,255,.11);
+  border:1px solid rgba(255,255,255,.2);
+  border-radius:12px;
+  padding:10px 13px;
+  font-size:9px;
+  line-height:1.9;
+}
+.content{padding:15px 17px 13px}
+.summary{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:9px;
+  margin-bottom:12px;
+}
+.stat{
+  border:1px solid #dbe5ee;
+  background:#f7fafd;
+  border-radius:12px;
+  padding:10px;
+  text-align:center;
+}
+.stat strong{
+  display:block;
+  color:#164478;
+  font-size:21px;
+  font-weight:900;
+}
+.stat span{
+  display:block;
+  margin-top:3px;
+  color:#708297;
+  font-size:9px;
+  font-weight:700;
+}
+.section-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin:2px 0 8px;
+  padding:0 2px;
+}
+.section-title h2{
+  margin:0;
+  color:#164478;
+  font-size:14px;
+}
+.section-title span{
+  color:#7b8b9b;
+  font-size:8px;
+}
+table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  border:1px solid #cbd8e4;
+  border-radius:11px;
+  overflow:hidden;
+}
+th{
+  background:#164478;
+  color:#fff;
+  padding:8px 5px;
+  font-size:8.5px;
+  font-weight:900;
+  border-left:1px solid rgba(255,255,255,.15);
+}
+td{
+  text-align:center;
+  padding:8px 5px;
+  font-size:8.6px;
+  font-weight:700;
+  border-bottom:1px solid #e2e9f0;
+  border-left:1px solid #e2e9f0;
+}
+tbody tr:nth-child(even) td{background:#f8fbfe}
+tbody tr:last-child td{border-bottom:0}
+.trainer,.course{
+  color:#164478;
+  font-weight:900;
+}
+.breaktime{
+  color:#8a5700;
+  background:#fff6df!important;
+  font-size:10px;
+  font-weight:900;
+}
+.footer{
+  margin-top:12px;
+  padding-top:9px;
+  border-top:1px solid #dce5ed;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  color:#748699;
+  font-size:8px;
+}
+.footer strong{color:#164478}
+@media print{
+  body{background:#fff}
+  .report{border-radius:0}
+}
+</style>
+</head>
+<body>
+<div class="report">
+  <div class="header">
+    <div class="brand">
+      <img class="logo" src="${PRUDLE_LOGO}" alt="Prudle">
+      <div>
+        <h1>تقرير أوقات البريك للمدربين</h1>
+        <div class="en">PRUDLE INSTITUTE · TRAINERS BREAK SCHEDULE</div>
+      </div>
+    </div>
+    <div class="issue">
+      <b>تاريخ التقرير:</b> ${now.toLocaleDateString("ar-SA")}<br>
+      <b>وقت الإصدار:</b> ${now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}<br>
+      <b>أعد بواسطة:</b> ${esc(USER||"Admin")}
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="summary">
+      <div class="stat"><strong>${trainersCount}</strong><span>عدد المدربين</span></div>
+      <div class="stat"><strong>${coursesCount}</strong><span>عدد الدورات</span></div>
+      <div class="stat"><strong>${reportRows.length}</strong><span>أوقات البريك المسجلة</span></div>
+    </div>
+
+    <div class="section-title">
+      <h2>جدول أوقات البريك المعتمدة</h2>
+      <span>يعرض الدورات المطابقة للفلاتر الحالية فقط</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>المدرب</th>
+          <th>الفرع</th>
+          <th>القسم</th>
+          <th>الدورة</th>
+          <th>تاريخ بدء الدورة</th>
+          <th>الفترة</th>
+          <th>وقت البريك</th>
+          <th>المدة</th>
+        </tr>
+      </thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+
+    <div class="footer">
+      <strong>Prudle Institute · Academic Administration</strong>
+      <span>تقرير إداري داخلي لأوقات راحة المدربين</span>
+    </div>
+  </div>
+</div>
+<script>
+window.onload=function(){
+  setTimeout(function(){window.print();},400);
+};
+<\/script>
+</body>
+</html>`);
 
   w.document.close();
 }
