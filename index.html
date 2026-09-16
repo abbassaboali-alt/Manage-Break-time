@@ -76,7 +76,7 @@ tbody tr:nth-child(even){background:#f8fbff}
 
     <div class="card">
       <h2>إعداد وقت البريك</h2>
-      <div class="sub">يتم تحديد وقت البريك لكل دورة بشكل مستقل، أو تطبيق نفس الوقت على كل الدورات الظاهرة حسب الفرع والقسم.</div>
+      <div class="sub">يتم تحديد وقت البريك لكل دورة بشكل مستقل. اختيار دورة واحدة وتعديلها لا يغيّر أي دورة أخرى.</div>
 
       <div class="field">
         <label>الفرع</label>
@@ -96,7 +96,6 @@ tbody tr:nth-child(even){background:#f8fbff}
         <label>الدورة</label>
         <select id="breakCourseSelect">
           <option value="">اختر الدورة</option>
-          <option value="__ALL__">كل الدورات الظاهرة</option>
         </select>
       </div>
 
@@ -109,7 +108,7 @@ tbody tr:nth-child(even){background:#f8fbff}
         <label>مدة البريك بالدقائق</label>
         <input id="durationInput" type="number" min="1" max="180" value="10">
       </div>
-<button class="save" onclick="saveSectionBreak()">حفظ وقت البريك للدورة / الكل</button>
+<button class="save" onclick="saveSectionBreak()">حفظ وقت البريك لهذه الدورة</button>
 
       <div class="info">
         إذا لم يوجد إعداد خاص للقسم، يستخدم النظام مدة GlobalSettings الحالية.
@@ -125,6 +124,7 @@ tbody tr:nth-child(even){background:#f8fbff}
         <select id="filterSection" onchange="renderAdminTable()"><option value="">كل الأقسام</option></select>
         <select id="filterPeriod" onchange="renderAdminTable()"><option value="">كل الفترات</option></select>
         <select id="filterCourse" onchange="renderAdminTable()"><option value="">كل الدورات</option></select>
+        <select id="filterStartDate" onchange="renderAdminTable()"><option value="">كل تواريخ البدء</option></select>
         <input id="filterTrainer" placeholder="بحث باسم المدرب" oninput="renderAdminTable()">
         <button class="refresh" onclick="attachAttendanceListeners()"><i class="fa-solid fa-arrows-rotate"></i> تحديث</button>
         <button class="pdf" onclick="exportTrainerAttendancePDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
@@ -138,6 +138,7 @@ tbody tr:nth-child(even){background:#f8fbff}
               <th>الفرع</th>
               <th>القسم</th>
               <th>الدورة</th>
+              <th>تاريخ بدء الدورة</th>
               <th>الفترة</th>
               <th>المدرب</th>
               <th>وقت البريك المحدد</th>
@@ -150,7 +151,7 @@ tbody tr:nth-child(even){background:#f8fbff}
             </tr>
           </thead>
           <tbody id="adminBody">
-            <tr><td colspan="13">جاري التحميل...</td></tr>
+            <tr><td colspan="14">جاري التحميل...</td></tr>
           </tbody>
         </table>
       </div>
@@ -191,12 +192,15 @@ const filterSection=document.getElementById("filterSection");
 const filterTrainer=document.getElementById("filterTrainer");
 const filterPeriod=document.getElementById("filterPeriod");
 const filterCourse=document.getElementById("filterCourse");
+const filterStartDate=document.getElementById("filterStartDate");
 const adminBody=document.getElementById("adminBody");
 
 let COURSES=[];
 let TODAY_ATTENDANCE=new Map();
 let courseUnsub=null;
 let attendanceUnsubs=[];
+let breakUnsubs=[];
+const BREAK_SETTINGS=new Map();
 
 function clean(v){return String(v??"").trim();}
 function todayIso(){return new Date().toISOString().split("T")[0];}
@@ -206,6 +210,39 @@ function branch(c){return clean(c?.branch||c?.Branch);}
 function section(c){return clean(c?.section||c?.Section);}
 function name(c){return clean(c?.TrainingCourse||c?.courseName||c?.Level||"Course");}
 function period(c){return clean(c?.Period||c?.period);}
+function courseStartRaw(c){
+  return c?.StartDate ?? c?.startDate ?? c?.start_date ??
+         c?.CourseStartDate ?? c?.courseStartDate ??
+         c?.start ?? c?.Start ?? c?.dateStart ?? c?.DateStart ?? "";
+}
+function courseStartDate(c){
+  const v=courseStartRaw(c);
+  if(!v)return "";
+  try{
+    if(v && typeof v.toDate==="function"){
+      const d=v.toDate();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    }
+    if(v && typeof v==="object" && typeof v.seconds==="number"){
+      const d=new Date(v.seconds*1000);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    }
+    const text=clean(v);
+    const iso=text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(iso)return `${iso[1]}-${String(iso[2]).padStart(2,"0")}-${String(iso[3]).padStart(2,"0")}`;
+    const d=new Date(text);
+    if(!Number.isNaN(d.getTime())){
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    }
+    return text;
+  }catch(e){return clean(v);}
+}
+function displayCourseStartDate(c){
+  const v=courseStartDate(c);
+  if(!v)return "-";
+  const m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
+}
 function trainer(c){return clean(c?.Trainer||c?.trainer);}
 function safeId(value){
   try{return btoa(unescape(encodeURIComponent(value))).replace(/[+/=]/g,"_");}
@@ -232,6 +269,7 @@ function startCourses(){
   courseUnsub=db.collection("Courses").onSnapshot(snap=>{
     COURSES=snap.docs.map(d=>({id:d.id,...d.data()})).filter(isOpen);
     fillSelectors();
+    attachBreakSettingsListeners();
     attachAttendanceListeners();
   });
 }
@@ -247,6 +285,9 @@ function fillSelectors(){
   const courseNames=[...new Set(COURSES.map(name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
   filterPeriod.innerHTML='<option value="">كل الفترات</option>'+periods.map(x=>`<option>${esc(x)}</option>`).join("");
   filterCourse.innerHTML='<option value="">كل الدورات</option>'+courseNames.map(x=>`<option>${esc(x)}</option>`).join("");
+  const startDates=[...new Set(COURSES.map(courseStartDate).filter(Boolean))].sort();
+  filterStartDate.innerHTML='<option value="">كل تواريخ البدء</option>'+
+    startDates.map(x=>`<option value="${esc(x)}">${esc((x.match(/^\d{4}-\d{2}-\d{2}$/)?x.split("-").reverse().join("/"):x))}</option>`).join("");
 
   refreshSectionOptions();
 }
@@ -259,6 +300,16 @@ function refreshSectionOptions(){
 }
 
 sectionSelect.addEventListener("change",refreshBreakCourseOptions);
+breakCourseSelect.addEventListener("change",()=>{
+  const courseId=clean(breakCourseSelect.value);
+  if(!courseId)return;
+  const b=BREAK_SETTINGS.get(courseId);
+  if(b){
+    if(clean(b.breakStart))breakStartInput.value=clean(b.breakStart);
+    if(Number(b.duration)>0)durationInput.value=Number(b.duration);
+  }
+});
+
 
 function refreshBreakCourseOptions(){
   const b=clean(branchSelect.value);
@@ -266,8 +317,7 @@ function refreshBreakCourseOptions(){
   const rows=COURSES.filter(c=>(!b||branch(c)===b)&&(!s||section(c)===s));
   breakCourseSelect.innerHTML=
     '<option value="">اختر الدورة</option>'+
-    '<option value="__ALL__">كل الدورات الظاهرة ('+rows.length+')</option>'+
-    rows.map(c=>`<option value="${esc(c.id)}">${esc(name(c))} · ${esc(period(c)||"-")} · ${esc(trainer(c)||"-")}</option>`).join("");
+    rows.map(c=>`<option value="${esc(c.id)}">${esc(name(c))} · ${esc(period(c)||"-")} · ${esc(displayCourseStartDate(c))} · ${esc(trainer(c)||"-")}</option>`).join("");
 }
 
 async function saveSectionBreak(){
@@ -275,45 +325,60 @@ async function saveSectionBreak(){
   const duration=Number(durationInput.value);
   const breakStart=clean(breakStartInput.value);
 
-  if(!courseId){alert("اختر دورة أو اختر كل الدورات الظاهرة.");return;}
+  if(!courseId){alert("اختر الدورة التي تريد تعديل وقت البريك لها.");return;}
   if(!breakStart){alert("حدد وقت بداية البريك.");return;}
   if(!Number.isFinite(duration)||duration<1){alert("أدخل مدة بريك صحيحة.");return;}
 
-  let targets=[];
-  if(courseId==="__ALL__"){
-    const b=clean(branchSelect.value);
-    const s=clean(sectionSelect.value);
-    targets=COURSES.filter(c=>(!b||branch(c)===b)&&(!s||section(c)===s));
-    if(!targets.length){alert("لا توجد دورات لتطبيق الإعداد عليها.");return;}
-    if(!confirm(`سيتم تطبيق وقت البريك ${breakStart} لمدة ${duration} دقيقة على ${targets.length} دورة. متابعة؟`))return;
-  }else{
-    const c=COURSES.find(x=>x.id===courseId);
-    if(!c){alert("الدورة غير موجودة.");return;}
-    targets=[c];
-  }
+  const c=COURSES.find(x=>x.id===courseId);
+  if(!c){alert("الدورة غير موجودة.");return;}
 
-  const batch=db.batch();
-  targets.forEach(c=>{
-    const ref=db.collection("BreakSettings").doc("course_"+c.id);
-    batch.set(ref,{
+  try{
+    await db.collection("BreakSettings").doc("course_"+c.id).set({
       courseId:c.id,
       courseName:name(c),
       period:period(c),
       trainer:trainer(c),
       branch:branch(c),
       section:section(c),
+      startDate:courseStartDate(c),
       breakStart,
       duration,
       enabled:true,
       updatedBy:USER,
       updatedAt:firebase.firestore.FieldValue.serverTimestamp()
     },{merge:true});
-  });
-  await batch.commit();
 
-  alert(targets.length===1
-    ? "تم حفظ وقت البريك لهذه الدورة."
-    : `تم حفظ وقت البريك لـ ${targets.length} دورة.`);
+    alert(`تم حفظ وقت البريك لدورة ${name(c)} فقط.`);
+  }catch(error){
+    console.error(error);
+    alert("تعذر حفظ وقت البريك. حاول مرة أخرى.");
+  }
+}
+
+function clearBreakSettingsListeners(){
+  breakUnsubs.forEach(fn=>{try{fn()}catch(e){}});
+  breakUnsubs=[];
+  BREAK_SETTINGS.clear();
+}
+
+function attachBreakSettingsListeners(){
+  clearBreakSettingsListeners();
+
+  COURSES.forEach(c=>{
+    const unsub=db.collection("BreakSettings").doc("course_"+c.id)
+      .onSnapshot(doc=>{
+        if(doc.exists) BREAK_SETTINGS.set(c.id,doc.data());
+        else BREAK_SETTINGS.delete(c.id);
+        renderAdminTable();
+
+        if(clean(breakCourseSelect.value)===c.id && doc.exists){
+          const b=doc.data()||{};
+          if(clean(b.breakStart))breakStartInput.value=clean(b.breakStart);
+          if(Number(b.duration)>0)durationInput.value=Number(b.duration);
+        }
+      },error=>console.warn("BreakSettings listener:",c.id,error));
+    breakUnsubs.push(unsub);
+  });
 }
 
 function clearAttendanceListeners(){
@@ -343,6 +408,7 @@ function getFilteredRows(){
   const fs=clean(filterSection.value);
   const fp=clean(filterPeriod.value);
   const fc=clean(filterCourse.value);
+  const fd=clean(filterStartDate.value);
   const ft=clean(filterTrainer.value).toLowerCase();
 
   return COURSES.filter(c=>
@@ -350,6 +416,7 @@ function getFilteredRows(){
     (!fs||section(c)===fs)&&
     (!fp||period(c)===fp)&&
     (!fc||name(c)===fc)&&
+    (!fd||courseStartDate(c)===fd)&&
     (!ft||trainer(c).toLowerCase().includes(ft))
   ).sort((a,b)=>
     branch(a).localeCompare(branch(b),"ar")||
@@ -374,8 +441,11 @@ function renderAdminTable(){
 
   adminBody.innerHTML=rows.map((c,i)=>{
     const d=TODAY_ATTENDANCE.get(c.id);
+    const b=BREAK_SETTINGS.get(c.id)||{};
     const st=clean(d?.status);
     const cls=st==="On Break"?"break":st==="Checked-Out"?"off":"good";
+    const scheduled=formatScheduledBreakTime(b.breakStart);
+    const duration=Number(b.duration||0);
 
     return `
       <tr>
@@ -383,8 +453,11 @@ function renderAdminTable(){
         <td>${esc(branch(c)||"-")}</td>
         <td>${esc(section(c)||"-")}</td>
         <td><b>${esc(name(c))}</b></td>
+        <td><b>${esc(displayCourseStartDate(c))}</b></td>
         <td>${esc(period(c)||"-")}</td>
         <td><b>${esc(trainer(c)||"-")}</b></td>
+        <td><span class="badge break">${esc(scheduled)}</span></td>
+        <td>${duration?esc(duration+" دقيقة"):"-"}</td>
         <td>${fmt(d?.startTS)}</td>
         <td>${fmt(d?.breakStartTS)}</td>
         <td>${fmt(d?.breakEndTS)}</td>
@@ -392,9 +465,8 @@ function renderAdminTable(){
         <td><span class="badge ${cls}">${esc(st||"لم يبدأ")}</span></td>
       </tr>
     `;
-  }).join("")||'<tr><td colspan="11">لا توجد بيانات مطابقة</td></tr>';
+  }).join("")||'<tr><td colspan="14">لا توجد بيانات مطابقة</td></tr>';
 }
-
 
 async function exportTrainerAttendancePDF(){
   const rows=getFilteredRows();
@@ -408,6 +480,7 @@ async function exportTrainerAttendancePDF(){
   const fs=clean(filterSection.value)||"كل الأقسام";
   const fp=clean(filterPeriod.value)||"كل الفترات";
   const fc=clean(filterCourse.value)||"كل الدورات";
+  const fd=clean(filterStartDate.value)||"كل تواريخ البدء";
   const ft=clean(filterTrainer.value)||"كل المدربين";
   const now=new Date();
 
@@ -445,6 +518,7 @@ async function exportTrainerAttendancePDF(){
         <td>${esc(branch(c)||"-")}</td>
         <td>${esc(section(c)||"-")}</td>
         <td class="course"><b>${esc(name(c))}</b></td>
+        <td>${esc(displayCourseStartDate(c))}</td>
         <td>${esc(period(c)||"-")}</td>
         <td><b>${esc(trainer(c)||"-")}</b></td>
         <td class="scheduled">${esc(scheduledBreak)}</td>
@@ -483,7 +557,7 @@ body{margin:0;font-family:Arial,Tahoma,sans-serif;color:#172f46;background:#fff}
 .title{flex:1}.title h1{margin:0;font-size:22px;font-weight:800}.title p{margin:5px 0 0;font-size:10px;color:#d9e8f6}
 .meta{min-width:220px;padding:10px 12px;border-radius:11px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.24);font-size:9px;line-height:1.9;text-align:left}
 .content{padding:12px 13px 20px}
-.filters{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-bottom:10px}
+.filters{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:10px}
 .filterBox{border:1px solid #d8e3ed;border-radius:9px;padding:7px 8px;background:#f5f9fc}
 .filterBox span{display:block;color:#718397;font-size:7px;margin-bottom:2px}
 .filterBox b{display:block;color:#164478;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -525,6 +599,7 @@ tr.danger{background:#fff4f5!important}
       <div class="filterBox"><span>القسم</span><b>${esc(fs)}</b></div>
       <div class="filterBox"><span>الفترة</span><b>${esc(fp)}</b></div>
       <div class="filterBox"><span>الدورة</span><b>${esc(fc)}</b></div>
+      <div class="filterBox"><span>تاريخ بدء الدورة</span><b>${esc(fd)}</b></div>
       <div class="filterBox"><span>المدرب</span><b>${esc(ft)}</b></div>
     </div>
 
@@ -542,8 +617,9 @@ tr.danger{background:#fff4f5!important}
         <th style="width:3%">#</th>
         <th style="width:7%">الفرع</th>
         <th style="width:7%">القسم</th>
-        <th style="width:10%">الدورة</th>
-        <th style="width:9%">الفترة</th>
+        <th style="width:9%">الدورة</th>
+        <th style="width:7%">تاريخ البدء</th>
+        <th style="width:8%">الفترة</th>
         <th style="width:9%">المدرب</th>
         <th style="width:8%">وقت البريك المحدد</th>
         <th style="width:6%">المدة</th>
@@ -570,6 +646,7 @@ tr.danger{background:#fff4f5!important}
 window.addEventListener("beforeunload",()=>{
   if(courseUnsub)courseUnsub();
   clearAttendanceListeners();
+  clearBreakSettingsListeners();
 });
 
 startCourses();
