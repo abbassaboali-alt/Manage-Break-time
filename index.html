@@ -93,13 +93,6 @@ tbody tr:nth-child(even){background:#f8fbff}
       </div>
 
       <div class="field">
-        <label>تاريخ بدء الدورة</label>
-        <select id="breakStartDateSelect" onchange="refreshBreakCourseOptions()">
-          <option value="">كل تواريخ البدء</option>
-        </select>
-      </div>
-
-      <div class="field">
         <label>الدورة</label>
         <select id="breakCourseSelect">
           <option value="">اختر الدورة</option>
@@ -193,7 +186,6 @@ const branchSelect=document.getElementById("branchSelect");
 const sectionSelect=document.getElementById("sectionSelect");
 const durationInput=document.getElementById("durationInput");
 const breakCourseSelect=document.getElementById("breakCourseSelect");
-const breakStartDateSelect=document.getElementById("breakStartDateSelect");
 const breakStartInput=document.getElementById("breakStartInput");
 const filterBranch=document.getElementById("filterBranch");
 const filterSection=document.getElementById("filterSection");
@@ -218,38 +210,43 @@ function branch(c){return clean(c?.branch||c?.Branch);}
 function section(c){return clean(c?.section||c?.Section);}
 function name(c){return clean(c?.TrainingCourse||c?.courseName||c?.Level||"Course");}
 function period(c){return clean(c?.Period||c?.period);}
-function courseStartRaw(c){
-  return c?.StartDate ?? c?.startDate ?? c?.start_date ??
-         c?.CourseStartDate ?? c?.courseStartDate ??
-         c?.start ?? c?.Start ?? c?.dateStart ?? c?.DateStart ?? "";
-}
 function courseStartDate(c){
-  const v=courseStartRaw(c);
-  if(!v)return "";
+  const raw =
+    c?.StartingDate ??
+    c?.startingDate ??
+    c?.startDate ??
+    "";
+
+  if(!raw) return "";
+
   try{
-    if(v && typeof v.toDate==="function"){
-      const d=v.toDate();
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    let d = null;
+
+    if(raw && typeof raw.toDate === "function"){
+      d = raw.toDate();
+    }else if(raw && typeof raw === "object" && typeof raw.seconds === "number"){
+      d = new Date(raw.seconds * 1000);
+    }else{
+      const text = clean(raw);
+      const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+
+      if(iso){
+        return `${iso[1]}-${String(iso[2]).padStart(2,"0")}-${String(iso[3]).padStart(2,"0")}`;
+      }
+
+      d = new Date(text);
     }
-    if(v && typeof v==="object" && typeof v.seconds==="number"){
-      const d=new Date(v.seconds*1000);
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    }
-    const text=clean(v);
-    const iso=text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if(iso)return `${iso[1]}-${String(iso[2]).padStart(2,"0")}-${String(iso[3]).padStart(2,"0")}`;
-    const d=new Date(text);
-    if(!Number.isNaN(d.getTime())){
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    }
-    return text;
-  }catch(e){return clean(v);}
+
+    if(!d || Number.isNaN(d.getTime())) return "";
+
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  }catch(error){
+    return "";
+  }
 }
+
 function displayCourseStartDate(c){
-  const v=courseStartDate(c);
-  if(!v)return "-";
-  const m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
+  return courseStartDate(c) || "-";
 }
 function trainer(c){return clean(c?.Trainer||c?.trainer);}
 function safeId(value){
@@ -304,34 +301,10 @@ function refreshSectionOptions(){
   const b=branchSelect.value;
   const sections=[...new Set(COURSES.filter(c=>!b||branch(c)===b).map(section).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ar"));
   sectionSelect.innerHTML='<option value="">اختر القسم</option>'+sections.map(x=>`<option>${esc(x)}</option>`).join("");
-  refreshBreakStartDateOptions();
   refreshBreakCourseOptions();
 }
 
-sectionSelect.addEventListener("change",()=>{
-  refreshBreakStartDateOptions();
-  refreshBreakCourseOptions();
-});
-
-function refreshBreakStartDateOptions(){
-  const b=clean(branchSelect.value);
-  const sec=clean(sectionSelect.value);
-  const current=clean(breakStartDateSelect.value);
-
-  const dates=[...new Set(
-    COURSES
-      .filter(c=>(!b||branch(c)===b)&&(!sec||section(c)===sec))
-      .map(courseStartDate)
-      .filter(Boolean)
-  )].sort();
-
-  breakStartDateSelect.innerHTML=
-    '<option value="">كل تواريخ البدء</option>'+
-    dates.map(x=>`<option value="${esc(x)}">${esc((x.match(/^\d{4}-\d{2}-\d{2}$/)?x.split("-").reverse().join("/"):x))}</option>`).join("");
-
-  if(dates.includes(current))breakStartDateSelect.value=current;
-}
-
+sectionSelect.addEventListener("change",refreshBreakCourseOptions);
 breakCourseSelect.addEventListener("change",()=>{
   const courseId=clean(breakCourseSelect.value);
   if(!courseId)return;
@@ -346,12 +319,7 @@ breakCourseSelect.addEventListener("change",()=>{
 function refreshBreakCourseOptions(){
   const b=clean(branchSelect.value);
   const s=clean(sectionSelect.value);
-  const sd=clean(breakStartDateSelect.value);
-  const rows=COURSES.filter(c=>
-    (!b||branch(c)===b)&&
-    (!s||section(c)===s)&&
-    (!sd||courseStartDate(c)===sd)
-  );
+  const rows=COURSES.filter(c=>(!b||branch(c)===b)&&(!s||section(c)===s));
   breakCourseSelect.innerHTML=
     '<option value="">اختر الدورة</option>'+
     rows.map(c=>`<option value="${esc(c.id)}">${esc(name(c))} · ${esc(period(c)||"-")} · ${esc(displayCourseStartDate(c))} · ${esc(trainer(c)||"-")}</option>`).join("");
