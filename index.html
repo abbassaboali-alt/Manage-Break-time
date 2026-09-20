@@ -117,7 +117,7 @@ tbody tr:nth-child(even){background:#f8fbff}
 .break-editor-brand{display:flex;align-items:center;gap:12px}.break-editor-brand img{width:66px;height:66px;object-fit:contain;background:#fff;border-radius:13px;padding:5px}.break-editor-brand h2{margin:0;color:#fff;font-size:23px}.break-editor-brand p{margin:4px 0 0;color:#dceaf7;font-size:10px;font-weight:800;letter-spacing:.5px}
 .break-editor-close{border:0;background:#fff;color:#164478;border-radius:9px;padding:8px 12px;font-family:Tajawal;font-weight:900;cursor:pointer}
 .break-editor-content{padding:14px 16px 18px;background:#fff}
-.break-editor-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px}.break-editor-stat{border:1px solid #dbe5ee;background:#f7fafd;border-radius:12px;padding:10px;text-align:center}.break-editor-stat strong{display:block;color:#164478;font-size:21px}.break-editor-stat span{font-size:10px;color:#708297;font-weight:800}
+.break-editor-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:14px}.break-editor-stat{border:1px solid #dbe5ee;background:#f7fafd;border-radius:12px;padding:10px;text-align:center}.break-editor-stat strong{display:block;color:#164478;font-size:21px}.break-editor-stat span{font-size:10px;color:#708297;font-weight:800}
 .break-edit-period{margin:0 0 15px;border:1px solid #d4e0eb;border-radius:14px;overflow:hidden}.break-edit-period-head{min-height:48px;background:#eaf4fd;border-bottom:1px solid #cbdbe9;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 13px}.break-edit-title{display:flex;align-items:center;gap:8px;color:#164478}.break-edit-title small{color:#6f8093;font-weight:800}.break-edit-title strong{font-size:16px}.break-edit-pill{min-width:155px;background:#164478;color:#fff;border-radius:999px;padding:7px 13px;text-align:center;font-weight:900}.break-editor-table-wrap{overflow:auto}.break-editor-table{width:100%;min-width:920px;border-collapse:collapse}.break-editor-table th{position:static;background:#164478;color:#fff;padding:8px 5px;font-size:10px}.break-editor-table td{text-align:center;padding:7px 5px;font-size:10px;font-weight:700;border-bottom:1px solid #e2e9f0;border-left:1px solid #e2e9f0}.break-editor-table tbody tr:nth-child(even) td{background:#f8fbfe}.break-editor-table input{height:34px;border-radius:8px;font-size:11px;padding:0 7px}.break-editor-table .edit-time{width:115px;direction:ltr;text-align:center;background:#fff6df;border-color:#efd99e}.break-editor-table .edit-duration{width:78px;direction:ltr;text-align:center}.break-editor-actions{position:sticky;bottom:0;background:#fff;border-top:1px solid #dce5ed;padding:12px 16px;display:flex;gap:8px;justify-content:flex-start}.break-editor-saveall{border:0;border-radius:10px;padding:11px 18px;background:#16a34a;color:#fff;font-family:Tajawal;font-weight:900;cursor:pointer}.break-editor-cancel{border:0;border-radius:10px;padding:11px 18px;background:#eef2f6;color:#52667a;font-family:Tajawal;font-weight:900;cursor:pointer}.period-ltr{direction:ltr;unicode-bidi:isolate;display:inline-block;text-align:left}
 @media(max-width:700px){.break-editor-summary{grid-template-columns:repeat(2,1fr)}.break-editor-modal{padding:5px}.break-editor-header{padding:12px}.break-editor-brand img{width:48px;height:48px}.break-editor-brand h2{font-size:17px}}
 
@@ -1187,6 +1187,40 @@ tr.no-login td{background:#fff0f0;color:#a61b1b}tr.late td{background:#fff7e8;co
   w.document.close();
 }
 let BREAK_EDITOR_ROWS=[];
+let BREAK_EDITOR_STUDENTS=[];
+
+function studentCourseId(s){
+  return clean(s?.courseId||s?.CourseId||s?.courseID||s?.CourseID||s?.courseDocId||s?.CourseDocId||"");
+}
+function studentCourseName(s){
+  return clean(s?.TrainingCourse||s?.courseName||s?.CourseName||s?.course||s?.Course||s?.Level||s?.level||"");
+}
+function studentBranch(s){return clean(s?.branch||s?.Branch||"");}
+function studentSection(s){return clean(s?.section||s?.Section||"");}
+function studentStartDate(s){
+  const raw=s?.StartingDate??s?.startingDate??s?.startDate??s?.courseStartDate??"";
+  if(!raw)return "";
+  try{
+    if(raw&&typeof raw.toDate==="function")return raw.toDate().toISOString().slice(0,10);
+    if(raw&&typeof raw==="object"&&typeof raw.seconds==="number")return new Date(raw.seconds*1000).toISOString().slice(0,10);
+    const t=clean(raw),m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(m)return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  }catch(e){}
+  return clean(raw);
+}
+function studentBelongsToCourse(s,c){
+  const sid=studentCourseId(s);
+  if(sid)return sid===c.id;
+  if(studentCourseName(s)!==name(c))return false;
+  const sb=studentBranch(s),ss=studentSection(s),sd=studentStartDate(s);
+  if(sb&&sb!==branch(c))return false;
+  if(ss&&ss!==section(c))return false;
+  if(sd&&sd!==courseStartDate(c))return false;
+  return true;
+}
+function studentCountForCourse(c){
+  return BREAK_EDITOR_STUDENTS.reduce((n,s)=>n+(studentBelongsToCourse(s,c)?1:0),0);
+}
 
 async function openBreakEditor(){
   const modal=document.getElementById("breakEditorModal");
@@ -1200,7 +1234,11 @@ async function openBreakEditor(){
   try{ rows=getFilteredRows(); }catch(e){ rows=[...COURSES]; }
   if(!rows.length) rows=[...COURSES];
 
-  const settings=await Promise.all(rows.map(c=>db.collection("BreakSettings").doc("course_"+c.id).get()));
+  const [settings,studentsSnap]=await Promise.all([
+    Promise.all(rows.map(c=>db.collection("BreakSettings").doc("course_"+c.id).get())),
+    db.collection("students").get()
+  ]);
+  BREAK_EDITOR_STUDENTS=studentsSnap.docs.map(d=>({id:d.id,...d.data()}));
   BREAK_EDITOR_ROWS=rows.map((c,i)=>({course:c,setting:settings[i].exists?settings[i].data():{}}));
   renderBreakEditor();
 }
@@ -1232,6 +1270,7 @@ function renderBreakEditor(){
   const configured=sorted.filter(x=>clean(x.setting?.breakStart)).length;
   const trainersCount=new Set(sorted.map(x=>trainer(x.course)).filter(Boolean)).size;
   const coursesCount=new Set(sorted.map(x=>name(x.course)).filter(Boolean)).size;
+  const studentsCount=sorted.reduce((sum,x)=>sum+studentCountForCourse(x.course),0);
 
   const groupsHTML=groups.map(g=>{
     const trs=g.rows.map((x,i)=>{
@@ -1246,6 +1285,7 @@ function renderBreakEditor(){
         <td>${esc(branch(x.course)||"-")}</td>
         <td>${esc(section(x.course)||"-")}</td>
         <td>${esc(displayCourseStartDate(x.course)||"-")}</td>
+        <td style="color:#164478;font-weight:900;font-size:12px">${studentCountForCourse(x.course)}</td>
         <td><input class="edit-time" type="time" value="${esc(start)}" data-field="breakStart"></td>
         <td><input class="edit-duration" type="number" min="1" max="180" value="${esc(String(dur))}" data-field="duration"></td>
       </tr>`;
@@ -1256,7 +1296,7 @@ function renderBreakEditor(){
         <div class="break-edit-pill">عدد السجلات &nbsp; ${g.rows.length}</div>
       </div>
       <div class="break-editor-table-wrap"><table class="break-editor-table">
-        <thead><tr><th>#</th><th>الدورة</th><th>رقم الفصل</th><th>المدرب</th><th>الفرع</th><th>القسم</th><th>تاريخ بدء الدورة</th><th>وقت البريك</th><th>المدة بالدقائق</th></tr></thead>
+        <thead><tr><th>#</th><th>الدورة</th><th>رقم الفصل</th><th>المدرب</th><th>الفرع</th><th>القسم</th><th>تاريخ بدء الدورة</th><th>عدد الطلاب</th><th>وقت البريك</th><th>المدة بالدقائق</th></tr></thead>
         <tbody>${trs}</tbody>
       </table></div>
     </section>`;
@@ -1267,6 +1307,7 @@ function renderBreakEditor(){
     <div class="break-editor-stat"><strong>${groups.length}</strong><span>عدد الفترات</span></div>
     <div class="break-editor-stat"><strong>${trainersCount}</strong><span>عدد المدربين</span></div>
     <div class="break-editor-stat"><strong>${configured}</strong><span>أوقات البريك المسجلة</span></div>
+    <div class="break-editor-stat"><strong>${studentsCount}</strong><span>إجمالي الطلاب</span></div>
   </div>${groupsHTML}`;
 }
 
