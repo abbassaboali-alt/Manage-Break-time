@@ -22,7 +22,7 @@ header{background:linear-gradient(135deg,#0f355f,#164478,#2469ad);color:#fff;pad
 .brand h1{margin:0;font-size:22px}.brand p{margin:3px 0 0;color:#d8e8f7;font-size:11px}
 .logout{border:0;border-radius:999px;padding:10px 15px;background:#fff;color:#164478;font-family:Tajawal;font-weight:900;cursor:pointer}
 .page{max-width:1500px;margin:18px auto;padding:0 12px 30px}
-.grid{display:grid;grid-template-columns:1fr;gap:12px}
+.grid{display:grid;grid-template-columns:380px 1fr;gap:12px}
 .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--shadow)}
 .card h2{margin:0 0 4px;font-size:20px;color:#0f355f}.sub{font-size:13px;color:var(--muted);font-weight:700;margin-bottom:12px}
 .field{margin-bottom:10px}.field label{display:block;font-size:13px;font-weight:900;color:#52667a;margin-bottom:5px}
@@ -141,6 +141,54 @@ tbody tr:nth-child(even){background:#f8fbff}
 <main class="page">
   <section class="grid">
 
+    <div class="card">
+      <h2>إعداد وقت البريك</h2>
+      <div class="sub">يتم تحديد وقت البريك لكل دورة بشكل مستقل. اختيار دورة واحدة وتعديلها لا يغيّر أي دورة أخرى.</div>
+      <button type="button" class="break-editor-btn" onclick="openBreakEditor()"><i class="fa-solid fa-pen-to-square"></i> فتح واجهة تعديل أوقات البريك</button>
+
+      <div class="field">
+        <label>الفرع</label>
+        <select id="branchSelect" onchange="refreshSectionOptions()">
+          <option value="">اختر الفرع</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>القسم</label>
+        <select id="sectionSelect">
+          <option value="">اختر القسم</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>الدورة</label>
+        <select id="breakCourseSelect">
+          <option value="">اختر الدورة</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>تاريخ بدء الدورة</label>
+        <select id="breakCourseStartDate" onchange="refreshBreakCourseOptions()">
+          <option value="">اختر تاريخ بدء الدورة</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>وقت بداية البريك</label>
+        <input id="breakStartInput" type="time" value="19:00">
+      </div>
+
+      <div class="field">
+        <label>مدة البريك بالدقائق</label>
+        <input id="durationInput" type="number" min="1" max="180" value="10">
+      </div>
+<button class="save" onclick="saveSectionBreak()">حفظ وقت البريك لهذه الدورة</button>
+
+      <div class="info">
+        إذا لم يوجد إعداد خاص للقسم، يستخدم النظام مدة GlobalSettings الحالية.
+      </div>
+    </div>
 
     <div class="card">
       <h2>تفاصيل المدربين اليوم</h2>
