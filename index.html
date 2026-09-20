@@ -22,7 +22,7 @@ header{background:linear-gradient(135deg,#0f355f,#164478,#2469ad);color:#fff;pad
 .brand h1{margin:0;font-size:22px}.brand p{margin:3px 0 0;color:#d8e8f7;font-size:11px}
 .logout{border:0;border-radius:999px;padding:10px 15px;background:#fff;color:#164478;font-family:Tajawal;font-weight:900;cursor:pointer}
 .page{max-width:1500px;margin:18px auto;padding:0 12px 30px}
-.grid{display:grid;grid-template-columns:380px 1fr;gap:12px}
+.grid{display:grid;grid-template-columns:1fr;gap:12px}
 .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--shadow)}
 .card h2{margin:0 0 4px;font-size:20px;color:#0f355f}.sub{font-size:13px;color:var(--muted);font-weight:700;margin-bottom:12px}
 .field{margin-bottom:10px}.field label{display:block;font-size:13px;font-weight:900;color:#52667a;margin-bottom:5px}
@@ -141,54 +141,6 @@ tbody tr:nth-child(even){background:#f8fbff}
 <main class="page">
   <section class="grid">
 
-    <div class="card">
-      <h2>إعداد وقت البريك</h2>
-      <div class="sub">يتم تحديد وقت البريك لكل دورة بشكل مستقل. اختيار دورة واحدة وتعديلها لا يغيّر أي دورة أخرى.</div>
-      <button type="button" class="break-editor-btn" onclick="openBreakEditor()"><i class="fa-solid fa-pen-to-square"></i> فتح واجهة تعديل أوقات البريك</button>
-
-      <div class="field">
-        <label>الفرع</label>
-        <select id="branchSelect" onchange="refreshSectionOptions()">
-          <option value="">اختر الفرع</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label>القسم</label>
-        <select id="sectionSelect">
-          <option value="">اختر القسم</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label>الدورة</label>
-        <select id="breakCourseSelect">
-          <option value="">اختر الدورة</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label>تاريخ بدء الدورة</label>
-        <select id="breakCourseStartDate" onchange="refreshBreakCourseOptions()">
-          <option value="">اختر تاريخ بدء الدورة</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label>وقت بداية البريك</label>
-        <input id="breakStartInput" type="time" value="19:00">
-      </div>
-
-      <div class="field">
-        <label>مدة البريك بالدقائق</label>
-        <input id="durationInput" type="number" min="1" max="180" value="10">
-      </div>
-<button class="save" onclick="saveSectionBreak()">حفظ وقت البريك لهذه الدورة</button>
-
-      <div class="info">
-        إذا لم يوجد إعداد خاص للقسم، يستخدم النظام مدة GlobalSettings الحالية.
-      </div>
-    </div>
 
     <div class="card">
       <h2>تفاصيل المدربين اليوم</h2>
@@ -271,6 +223,7 @@ tbody tr:nth-child(even){background:#f8fbff}
     <div id="breakEditorBody" class="break-editor-content">جاري التحميل...</div>
     <div class="break-editor-actions">
       <button type="button" class="break-editor-saveall" onclick="saveAllBreakEditor()"><i class="fa-solid fa-floppy-disk"></i> حفظ جميع التعديلات</button>
+      <button type="button" class="pdf" onclick="exportBreakEditorStudentsPDF()"><i class="fa-solid fa-file-pdf"></i> PDF مع أعداد الطلاب</button>
       <button type="button" class="break-editor-cancel" onclick="closeBreakEditor()">إلغاء</button>
     </div>
   </div>
@@ -1339,6 +1292,66 @@ async function saveAllBreakEditor(){
     closeBreakEditor();
   }catch(error){console.error(error);alert("تعذر حفظ التعديلات. حاول مرة أخرى.");}
   finally{if(btn){btn.disabled=false;btn.innerHTML=old}}
+}
+
+async function exportBreakEditorStudentsPDF(){
+  if(!BREAK_EDITOR_ROWS.length){
+    alert("لا توجد بيانات في واجهة تعديل البريك.");
+    return;
+  }
+
+  const sorted=[...BREAK_EDITOR_ROWS].sort((a,b)=>
+    period(a.course).localeCompare(period(b.course),"en",{numeric:true,sensitivity:"base"}) ||
+    name(a.course).localeCompare(name(b.course),"ar",{numeric:true,sensitivity:"base"}) ||
+    courseStartDate(b.course).localeCompare(courseStartDate(a.course)) ||
+    trainer(a.course).localeCompare(trainer(b.course),"ar",{sensitivity:"base"})
+  );
+
+  const groups=[];
+  sorted.forEach(x=>{
+    const p=period(x.course)||"-";
+    let g=groups.find(y=>y.period===p);
+    if(!g){g={period:p,rows:[]};groups.push(g)}
+    g.rows.push(x);
+  });
+
+  const coursesCount=new Set(sorted.map(x=>name(x.course)).filter(Boolean)).size;
+  const trainersCount=new Set(sorted.map(x=>trainer(x.course)).filter(Boolean)).size;
+  const configured=sorted.filter(x=>clean(x.setting?.breakStart)).length;
+  const studentsCount=sorted.reduce((sum,x)=>sum+studentCountForCourse(x.course),0);
+
+  const groupsHTML=groups.map(g=>{
+    const rows=g.rows.map((x,i)=>{
+      const st=x.setting||{};
+      return `<tr>
+        <td>${i+1}</td>
+        <td><b>${esc(name(x.course)||"-")}</b></td>
+        <td>${esc(roomNumber(x.course))}</td>
+        <td class="trainer">${esc(trainer(x.course)||"-")}</td>
+        <td>${esc(branch(x.course)||"-")}</td>
+        <td>${esc(section(x.course)||"-")}</td>
+        <td>${esc(displayCourseStartDate(x.course)||"-")}</td>
+        <td class="students">${studentCountForCourse(x.course)}</td>
+        <td class="breaktime">${esc(formatScheduledBreakTime(st.breakStart)||"-")}</td>
+        <td>${Number(st.duration||0)?esc(String(Number(st.duration))+" دقيقة"):"-"}</td>
+      </tr>`;
+    }).join("");
+    return `<section class="period-block">
+      <div class="period-head">
+        <div><span>جميع الدورات والتواريخ ضمن </span><strong>الفترة <bdi dir="ltr">${esc(g.period)}</bdi></strong></div>
+        <div class="pill">عدد السجلات <b>${g.rows.length}</b></div>
+      </div>
+      <table><thead><tr><th>#</th><th>الدورة</th><th>رقم الفصل</th><th>المدرب</th><th>الفرع</th><th>القسم</th><th>تاريخ بدء الدورة</th><th>عدد الطلاب</th><th>وقت البريك</th><th>المدة</th></tr></thead><tbody>${rows}</tbody></table>
+    </section>`;
+  }).join("");
+
+  const w=window.open("","_blank");
+  if(!w){alert("اسمح بالنوافذ المنبثقة لإنشاء التقرير.");return;}
+  w.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>Prudle - Break Times & Students</title><style>
+  @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{margin:0;font-family:Arial,Tahoma,sans-serif;color:#18324a;background:#eef3f8}.report{background:#fff;border:1px solid #cfdbe7;border-radius:16px;overflow:hidden}.header{background:linear-gradient(135deg,#0f355f,#164478,#2469ad);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center}.header h1{margin:0;font-size:24px}.header p{margin:4px 0 0;font-size:10px}.logo{width:68px;height:68px;object-fit:contain;background:#fff;border-radius:13px;padding:5px}.summary{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:12px}.stat{border:1px solid #dbe5ee;background:#f7fafd;border-radius:11px;padding:9px;text-align:center}.stat b{display:block;color:#164478;font-size:20px}.stat span{font-size:9px;color:#708297;font-weight:bold}.period-block{margin:0 12px 12px;border:1px solid #d4e0eb;border-radius:13px;overflow:hidden;page-break-inside:avoid}.period-head{background:#eaf4fd;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;color:#164478;font-size:12px}.period-head span{color:#6f8093;font-weight:bold}.pill{background:#164478;color:#fff;border-radius:999px;padding:6px 13px;font-weight:bold}table{width:100%;border-collapse:collapse;font-size:9px}th{background:#164478;color:#fff;padding:7px 4px}td{text-align:center;padding:7px 4px;border-bottom:1px solid #e2e9f0;border-left:1px solid #e2e9f0}.trainer,.students,.breaktime{font-weight:bold;color:#164478}.students{font-size:11px}.breaktime{background:#fff6df}bdi{direction:ltr;unicode-bidi:isolate}.actions{padding:10px;text-align:center}.actions button{border:0;border-radius:8px;background:#164478;color:#fff;padding:9px 18px;font-weight:bold;cursor:pointer}@media print{body{background:#fff}.actions{display:none}.report{border:0}}
+  </style></head><body><div class="report"><div class="header"><div><h1>تقرير أوقات البريك وأعداد الطلاب</h1><p>PRUDLE INSTITUTE · TRAINERS BREAK SCHEDULE</p></div><img class="logo" src="${PRUDLE_LOGO}"></div><div class="summary"><div class="stat"><b>${coursesCount}</b><span>عدد الدورات</span></div><div class="stat"><b>${groups.length}</b><span>عدد الفترات</span></div><div class="stat"><b>${trainersCount}</b><span>عدد المدربين</span></div><div class="stat"><b>${configured}</b><span>أوقات البريك المسجلة</span></div><div class="stat"><b>${studentsCount}</b><span>إجمالي الطلاب</span></div></div>${groupsHTML}<div class="actions"><button onclick="window.print()">حفظ / طباعة PDF</button></div></div></body></html>`);
+  w.document.close();
+  setTimeout(()=>{try{w.focus();w.print()}catch(e){}},700);
 }
 
 async function exportTrainerBreakTimesPDF(){
