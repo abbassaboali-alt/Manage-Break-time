@@ -1231,7 +1231,7 @@ async function exportTrainerBreakTimesPDF(){
         <div class="period-head">
           <div class="course-title">
             <span class="small-label">جميع الدورات والتواريخ ضمن</span>
-            <strong>الفترة ${esc(group.coursePeriod)}</strong>
+            <strong>الفترة <bdi class="period-ltr" dir="ltr">${esc(group.coursePeriod)}</bdi></strong>
           </div>
           <div class="period-pill">
             <span>عدد السجلات</span>
@@ -1423,6 +1423,7 @@ body{
   gap:8px;
 }
 
+.period-ltr{direction:ltr;unicode-bidi:isolate;display:inline-block;text-align:left;}
 .period-pill span{
   font-size:9px;
   opacity:.85;
