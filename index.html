@@ -1406,7 +1406,7 @@ async function exportTrainerBreakTimesPDF(){
 
   const rows=getFilteredRows();
   if(!rows.length){
-    alert("لا توجد دورات مطابقة للفلاتر الحالية.");
+    alert("No courses match the current filters.");
     return;
   }
 
@@ -1427,7 +1427,7 @@ async function exportTrainerBreakTimesPDF(){
   );
 
   if(!reportRows.length){
-    alert("لا توجد أوقات بريك محددة للدورات المطابقة.");
+    alert("No scheduled break times were found for the matching courses.");
     return;
   }
 
@@ -1466,7 +1466,7 @@ async function exportTrainerBreakTimesPDF(){
         <td>${esc(section(x.course)||"-")}</td>
         <td>${esc(displayCourseStartDate(x.course)||"-")}</td>
         <td class="breaktime">${esc(formatScheduledBreakTime(x.setting.breakStart)||"-")}</td>
-        <td>${Number(x.setting.duration||0) ? esc(String(Number(x.setting.duration))+" دقيقة") : "-"}</td>
+        <td>${Number(x.setting.duration||0) ? esc(String(Number(x.setting.duration))+" min") : "-"}</td>
       </tr>
     `).join("");
 
@@ -1479,36 +1479,36 @@ async function exportTrainerBreakTimesPDF(){
       <section class="period-block">
         <div class="period-head">
           <div class="course-title">
-            <span class="small-label">جميع الدورات والتواريخ ضمن</span>
-            <strong>الفترة <bdi class="period-ltr" dir="ltr">${esc(group.coursePeriod)}</bdi></strong>
+            <span class="small-label">All courses and start dates within</span>
+            <strong>Period <bdi class="period-ltr" dir="ltr">${esc(group.coursePeriod)}</bdi></strong>
           </div>
           <div class="period-pill">
-            <span>عدد السجلات</span>
+            <span>Records</span>
             <strong>${group.rows.length}</strong>
           </div>
         </div>
         <table>
           <thead><tr>
-            <th>#</th><th>الدورة</th><th>رقم الفصل</th><th>المدرب</th><th>الفرع</th><th>القسم</th>
-            <th>تاريخ بدء الدورة</th><th>وقت البريك</th><th>المدة</th>
+            <th>#</th><th>Course</th><th>Classroom</th><th>Trainer</th><th>Branch</th><th>Section</th>
+            <th>Course Start Date</th><th>Break Time</th><th>Duration</th>
           </tr></thead>
           <tbody>${groupRows}</tbody>
         </table>
         <div class="period-summary">
-          <span>الفترة تظهر مرة واحدة حتى عند اختيار أكثر من تاريخ.</span>
-          <span>متوسط مدة البريك: <b>${avgDuration||0} دقيقة</b></span>
+          <span>Each period is shown once even when multiple course start dates are selected.</span>
+          <span>Average Break Duration: <b>${avgDuration||0} min</b></span>
         </div>
       </section>`;
   }).join("");
 
   const w=window.open("","_blank");
   if(!w){
-    alert("اسمح بالنوافذ المنبثقة لإنشاء التقرير.");
+    alert("Please allow pop-ups to generate the report.");
     return;
   }
 
   w.document.write(`<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
 <title>Prudle - Trainers Break Times Report</title>
@@ -1518,6 +1518,8 @@ async function exportTrainerBreakTimesPDF(){
 
 body{
   margin:0;
+  direction:ltr;
+  text-align:left;
   font-family:Arial,Tahoma,sans-serif;
   background:#eef3f8;
   color:#18324a;
@@ -1644,6 +1646,7 @@ body{
 
 .course-title{
   display:flex;
+  direction:ltr;
   align-items:center;
   gap:8px;
   color:#164478;
@@ -1766,33 +1769,33 @@ tbody tr:last-child td{border-bottom:0}
     <div class="brand">
       <img class="logo" src="${PRUDLE_LOGO}" alt="Prudle">
       <div>
-        <h1>تقرير أوقات البريك للمدربين</h1>
-        <div class="en">PRUDLE INSTITUTE · TRAINERS BREAK SCHEDULE</div>
-        <div class="sort-note">تجميع موحّد حسب الفترة ← الدورة ← المدرب</div>
+        <h1>Trainers Break Schedule</h1>
+        <div class="en">PRUDLE INSTITUTE · ACADEMIC ADMINISTRATION</div>
+        <div class="sort-note">Grouped by Period → Course → Trainer</div>
       </div>
     </div>
 
     <div class="issue">
-      <b>تاريخ التقرير:</b> ${now.toLocaleDateString("ar-SA")}<br>
-      <b>وقت الإصدار:</b> ${now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}<br>
-      <b>أعد بواسطة:</b> ${esc(USER||"Admin")}
+      <b>Report Date:</b> ${now.toLocaleDateString("en-GB")}<br>
+      <b>Issue Time:</b> ${now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}<br>
+      <b>Prepared By:</b> ${esc(USER||"Admin")}
     </div>
   </div>
 
   <div class="content">
 
     <div class="summary">
-      <div class="stat"><strong>${coursesCount}</strong><span>عدد الدورات</span></div>
-      <div class="stat"><strong>${periodsCount}</strong><span>عدد الفترات</span></div>
-      <div class="stat"><strong>${trainersCount}</strong><span>عدد المدربين</span></div>
-      <div class="stat"><strong>${reportRows.length}</strong><span>أوقات البريك المسجلة</span></div>
+      <div class="stat"><strong>${coursesCount}</strong><span>Courses</span></div>
+      <div class="stat"><strong>${periodsCount}</strong><span>Periods</span></div>
+      <div class="stat"><strong>${trainersCount}</strong><span>Trainers</span></div>
+      <div class="stat"><strong>${reportRows.length}</strong><span>Scheduled Breaks</span></div>
     </div>
 
     ${groupsHTML}
 
     <div class="footer">
       <strong>Prudle Institute · Academic Administration</strong>
-      <span>كل فترة متشابهة مجمعة معًا مهما تعددت تواريخ بدء الدورات</span>
+      <span>Matching periods are grouped together regardless of course start date.</span>
     </div>
 
   </div>
